@@ -70,7 +70,61 @@ namespace USL {
     maxRetry?: number;
   }
 
-  /** 通知用户去登录：弹 GM_notification，点击后打开登录页 */
+  // ---- GM API 适配器：双探 GM_* 全局函数形式 / GM.* 命名空间形式 ----
+  // 与 logger/gmRequest 一致：用户 grant 任一形式都能找到可用实现。
+  // 注意 GM.* 形式为 Promise 风格，GM_* 为同步；适配器统一封装差异。
+
+  const g: any = typeof globalThis !== "undefined" ? globalThis : ({} as any);
+  const gmObj: any = typeof GM !== "undefined" ? (GM as any) : undefined;
+
+  /** 取可用的 notification 调用器（返回 void/Promise，fire-and-forget） */
+  function pickNotification():
+    | ((details: any, ondone?: (clicked: boolean) => void) => unknown)
+    | undefined {
+    if (typeof g.GM_notification === "function") return g.GM_notification;
+    if (gmObj && typeof gmObj.notification === "function") {
+      return (d: any) => gmObj.notification(d);
+    }
+    return undefined;
+  }
+
+  /** 取可用的 openInTab 调用器（返回 Tab/Promise<Tab>，fire-and-forget） */
+  function pickOpenInTab():
+    | ((url: string, options?: any) => unknown)
+    | undefined {
+    if (typeof g.GM_openInTab === "function") return g.GM_openInTab;
+    if (gmObj && typeof gmObj.openInTab === "function") {
+      return (url: string, opts?: any) => gmObj.openInTab(url, opts);
+    }
+    return undefined;
+  }
+
+  /** 取可用的 addValueChangeListener 调用器（同步返回 number 或 Promise<number>） */
+  function pickAddValueChangeListener():
+    | ((
+        name: string,
+        listener: (name: string, oldV: unknown, newV: unknown, remote: boolean, tabid?: number) => unknown
+      ) => number | Promise<number>)
+    | undefined {
+    if (typeof g.GM_addValueChangeListener === "function") return g.GM_addValueChangeListener;
+    if (gmObj && typeof gmObj.addValueChangeListener === "function") {
+      return (name, listener) => gmObj.addValueChangeListener(name, listener);
+    }
+    return undefined;
+  }
+
+  /** 取可用的 removeValueChangeListener 调用器 */
+  function pickRemoveValueChangeListener():
+    | ((listenerId: number) => void | Promise<void>)
+    | undefined {
+    if (typeof g.GM_removeValueChangeListener === "function") return g.GM_removeValueChangeListener;
+    if (gmObj && typeof gmObj.removeValueChangeListener === "function") {
+      return (id: number) => gmObj.removeValueChangeListener(id);
+    }
+    return undefined;
+  }
+
+  /** 通知用户去登录：弹 GM_notification，点击通知打开登录页 */
   function notifyLogin(
     options: LoginFlowOptions
   ): void {
@@ -83,9 +137,14 @@ namespace USL {
         title = "登录";
       }
     }
+    const openTab = pickOpenInTab();
     const open = () => {
+      if (!openTab) {
+        logger.error("GM_openInTab unavailable (grant GM_openInTab or GM.openInTab)");
+        return;
+      }
       try {
-        GM_openInTab(options.loginUrl, { active: true });
+        openTab(options.loginUrl, { active: true });
       } catch (e) {
         logger.error("GM_openInTab failed", e);
       }
@@ -93,11 +152,17 @@ namespace USL {
 
     if (options.autoOpenLogin) open();
 
+    const notify = pickNotification();
+    if (!notify) {
+      // notification 不可用，直接打开登录页
+      logger.warn("GM_notification unavailable, opening login directly");
+      open();
+      return;
+    }
     try {
       // 点击通知打开登录页
-      GM_notification({ text, title, onclick: open });
+      notify({ text, title, onclick: open });
     } catch (e) {
-      // notification 不可用时退化为直接打开
       logger.warn("GM_notification failed, opening login directly", e);
       open();
     }
@@ -121,16 +186,33 @@ namespace USL {
       let done = false;
       let pollTimer: ReturnType<typeof setInterval> | undefined;
       let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+      // listenerId 可能同步拿到(number)或异步(Promise<number>，GM.* 风格)
       let listenerId: number | undefined;
+      let listenerIdPromise: Promise<number> | undefined;
+      let listenerRegistered = false;
+
+      const removeListener = () => {
+        if (listenerId !== undefined) {
+          // 同步形式已拿到 id
+          const rm = pickRemoveValueChangeListener();
+          if (rm) {
+            try { rm(listenerId); } catch {}
+          }
+        } else if (listenerIdPromise) {
+          // Promise 形式：id 还没 resolve，等拿到再 remove
+          listenerIdPromise.then((id) => {
+            const rm = pickRemoveValueChangeListener();
+            if (rm) {
+              try { rm(id); } catch {}
+            }
+          });
+        }
+      };
 
       const cleanup = () => {
         if (pollTimer) clearInterval(pollTimer);
         if (timeoutTimer) clearTimeout(timeoutTimer);
-        if (listenerId !== undefined) {
-          try {
-            GM_removeValueChangeListener(listenerId);
-          } catch {}
-        }
+        if (listenerRegistered) removeListener();
       };
 
       const finish = (ok: boolean, err?: Error) => {
@@ -141,16 +223,29 @@ namespace USL {
         else reject(err ?? new LoginTimeoutError(timeout));
       };
 
-      // 路 A：监听前台脚本 setValue 写入真值
-      try {
-        listenerId = GM_addValueChangeListener(
-          options.loginSignalKey,
-          (_name, _oldV, newV, _remote) => {
-            if (newV) finish(true);
+      // 路 A：监听前台脚本 setValue 写入真值（双探 GM_* / GM.*）
+      const addListener = pickAddValueChangeListener();
+      if (addListener) {
+        try {
+          const result = addListener(
+            options.loginSignalKey,
+            (_name, _oldV, newV, _remote) => {
+              if (newV) finish(true);
+            }
+          );
+          if (typeof result === "number") {
+            listenerId = result;
+            listenerRegistered = true;
+          } else if (result && typeof (result as any).then === "function") {
+            listenerIdPromise = result as Promise<number>;
+            listenerRegistered = true;
+            // 若等待 id 期间已 finish，拿到后立即 remove（cleanup 里的 .then 会处理）
           }
-        );
-      } catch (e) {
-        logger.warn("GM_addValueChangeListener unavailable, rely on polling only", e);
+        } catch (e) {
+          logger.warn("GM_addValueChangeListener failed, rely on polling only", e);
+        }
+      } else {
+        logger.warn("GM_addValueChangeListener unavailable, rely on polling only");
       }
 
       // 路 B：轮询探测

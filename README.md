@@ -107,7 +107,7 @@ USL.logger.info("hi");                           // 弹 info/warn/...
 - `GM_setValue` — **前台脚本**登录成功后写标记用（约定 key）；后台脚本只是监听，但若前后台同一脚本则也需 grant。
 - `GM_addValueChangeListener`/`GM_removeValueChangeListener` — **后台脚本**监听登录标记；gmRequestWithLogin 的路 A。未 grant 时自动退化为仅靠轮询探测（路 B）。
 
-> ScriptCat 里 `@grant GM_xmlhttpRequest` 与 `@grant GM.xmlHttpRequest` 二选一即可（库两种形式都尝试）。推荐全局函数形式 `GM_*`。
+> ScriptCat 里 `@grant GM_xxx`（全局函数形式）与 `@grant GM.xxx`（命名空间形式）二选一即可——库对所有用到的 GM API 都做了双探，两种形式都能找到可用实现。推荐统一一种形式（`GM_*` 与 ScriptCat 文档示例一致）。
 
 ## 在油猴脚本中使用
 
