@@ -272,7 +272,48 @@ var USL;
         }
     }
     USL.LoginTimeoutError = LoginTimeoutError;
-    /** 通知用户去登录：弹 GM_notification，点击后打开登录页 */
+    // ---- GM API 适配器：双探 GM_* 全局函数形式 / GM.* 命名空间形式 ----
+    // 与 logger/gmRequest 一致：用户 grant 任一形式都能找到可用实现。
+    // 注意 GM.* 形式为 Promise 风格，GM_* 为同步；适配器统一封装差异。
+    const g = typeof globalThis !== "undefined" ? globalThis : {};
+    const gmObj = typeof GM !== "undefined" ? GM : undefined;
+    /** 取可用的 notification 调用器（返回 void/Promise，fire-and-forget） */
+    function pickNotification() {
+        if (typeof g.GM_notification === "function")
+            return g.GM_notification;
+        if (gmObj && typeof gmObj.notification === "function") {
+            return (d) => gmObj.notification(d);
+        }
+        return undefined;
+    }
+    /** 取可用的 openInTab 调用器（返回 Tab/Promise<Tab>，fire-and-forget） */
+    function pickOpenInTab() {
+        if (typeof g.GM_openInTab === "function")
+            return g.GM_openInTab;
+        if (gmObj && typeof gmObj.openInTab === "function") {
+            return (url, opts) => gmObj.openInTab(url, opts);
+        }
+        return undefined;
+    }
+    /** 取可用的 addValueChangeListener 调用器（同步返回 number 或 Promise<number>） */
+    function pickAddValueChangeListener() {
+        if (typeof g.GM_addValueChangeListener === "function")
+            return g.GM_addValueChangeListener;
+        if (gmObj && typeof gmObj.addValueChangeListener === "function") {
+            return (name, listener) => gmObj.addValueChangeListener(name, listener);
+        }
+        return undefined;
+    }
+    /** 取可用的 removeValueChangeListener 调用器 */
+    function pickRemoveValueChangeListener() {
+        if (typeof g.GM_removeValueChangeListener === "function")
+            return g.GM_removeValueChangeListener;
+        if (gmObj && typeof gmObj.removeValueChangeListener === "function") {
+            return (id) => gmObj.removeValueChangeListener(id);
+        }
+        return undefined;
+    }
+    /** 通知用户去登录：弹 GM_notification，点击通知打开登录页 */
     function notifyLogin(options) {
         var _a, _b;
         const text = (_a = options.notificationText) !== null && _a !== void 0 ? _a : "点击去登录";
@@ -285,9 +326,14 @@ var USL;
                 title = "登录";
             }
         }
+        const openTab = pickOpenInTab();
         const open = () => {
+            if (!openTab) {
+                USL.logger.error("GM_openInTab unavailable (grant GM_openInTab or GM.openInTab)");
+                return;
+            }
             try {
-                GM_openInTab(options.loginUrl, { active: true });
+                openTab(options.loginUrl, { active: true });
             }
             catch (e) {
                 USL.logger.error("GM_openInTab failed", e);
@@ -295,12 +341,18 @@ var USL;
         };
         if (options.autoOpenLogin)
             open();
+        const notify = pickNotification();
+        if (!notify) {
+            // notification 不可用，直接打开登录页
+            USL.logger.warn("GM_notification unavailable, opening login directly");
+            open();
+            return;
+        }
         try {
             // 点击通知打开登录页
-            GM_notification({ text, title, onclick: open });
+            notify({ text, title, onclick: open });
         }
         catch (e) {
-            // notification 不可用时退化为直接打开
             USL.logger.warn("GM_notification failed, opening login directly", e);
             open();
         }
@@ -320,18 +372,41 @@ var USL;
             let done = false;
             let pollTimer;
             let timeoutTimer;
+            // listenerId 可能同步拿到(number)或异步(Promise<number>，GM.* 风格)
             let listenerId;
+            let listenerIdPromise;
+            let listenerRegistered = false;
+            const removeListener = () => {
+                if (listenerId !== undefined) {
+                    // 同步形式已拿到 id
+                    const rm = pickRemoveValueChangeListener();
+                    if (rm) {
+                        try {
+                            rm(listenerId);
+                        }
+                        catch { }
+                    }
+                }
+                else if (listenerIdPromise) {
+                    // Promise 形式：id 还没 resolve，等拿到再 remove
+                    listenerIdPromise.then((id) => {
+                        const rm = pickRemoveValueChangeListener();
+                        if (rm) {
+                            try {
+                                rm(id);
+                            }
+                            catch { }
+                        }
+                    });
+                }
+            };
             const cleanup = () => {
                 if (pollTimer)
                     clearInterval(pollTimer);
                 if (timeoutTimer)
                     clearTimeout(timeoutTimer);
-                if (listenerId !== undefined) {
-                    try {
-                        GM_removeValueChangeListener(listenerId);
-                    }
-                    catch { }
-                }
+                if (listenerRegistered)
+                    removeListener();
             };
             const finish = (ok, err) => {
                 if (done)
@@ -343,15 +418,30 @@ var USL;
                 else
                     reject(err !== null && err !== void 0 ? err : new LoginTimeoutError(timeout));
             };
-            // 路 A：监听前台脚本 setValue 写入真值
-            try {
-                listenerId = GM_addValueChangeListener(options.loginSignalKey, (_name, _oldV, newV, _remote) => {
-                    if (newV)
-                        finish(true);
-                });
+            // 路 A：监听前台脚本 setValue 写入真值（双探 GM_* / GM.*）
+            const addListener = pickAddValueChangeListener();
+            if (addListener) {
+                try {
+                    const result = addListener(options.loginSignalKey, (_name, _oldV, newV, _remote) => {
+                        if (newV)
+                            finish(true);
+                    });
+                    if (typeof result === "number") {
+                        listenerId = result;
+                        listenerRegistered = true;
+                    }
+                    else if (result && typeof result.then === "function") {
+                        listenerIdPromise = result;
+                        listenerRegistered = true;
+                        // 若等待 id 期间已 finish，拿到后立即 remove（cleanup 里的 .then 会处理）
+                    }
+                }
+                catch (e) {
+                    USL.logger.warn("GM_addValueChangeListener failed, rely on polling only", e);
+                }
             }
-            catch (e) {
-                USL.logger.warn("GM_addValueChangeListener unavailable, rely on polling only", e);
+            else {
+                USL.logger.warn("GM_addValueChangeListener unavailable, rely on polling only");
             }
             // 路 B：轮询探测
             const poll = async () => {
