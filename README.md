@@ -22,28 +22,30 @@ npm run watch      # 监听变更自动编译
 ## 发布与引用（jsDelivr）
 
 发布流程由 GitHub Actions 自动完成（`.github/workflows/release.yml`）：
+打 `v*` tag → CI `npm run build` → 把 `dist/index.js` 提交到 master 根 `index.js` →
+把 tag 移到含产物的 commit。
 
-1. 改源码，更新 `package.json` 的 `version`。
-2. 本地提交并推送：
-   ```bash
-   git add -A && git commit -m "feat: xxx"
-   git push
-   ```
-3. 打版本 tag 触发发布：
-   ```bash
-   git tag v0.1.0
-   git push --tags
-   ```
-4. Action 自动 `npm run build`，把 `dist/index.js` 复制到 **master 根目录 `index.js`** 并提交，
-   再把 tag 移到含产物的 commit 上。
+### 发新版（快捷脚本）
 
-之后即可在油猴脚本中 `@require`：
+```bash
+# 工作区干净时，一行命令发版（改版本号 + commit + tag + push，CI 自动发布产物）
+npm run release -- patch      # 0.1.0 -> 0.1.1
+npm run release -- minor      # 0.1.0 -> 0.2.0
+npm run release -- major      # 0.1.0 -> 1.0.0
+npm run release -- 1.2.3      # 指定具体版本
+```
+
+脚本会自动：检查工作区干净 → 同步远程 → `npm version` 改版本号/commit/tag → push。
+若工作区有未提交改动或本地落后远程，会中止并提示。关注 Actions：
+https://github.com/linch90/userscript-libs/actions
+
+### 引用
 
 ```js
 // 锁定版本（推荐，永不变化）
 // @require https://cdn.jsdelivr.net/gh/linch90/userscript-libs@v0.1.0/index.js
 
-// 跟踪 master 最新产物（注意 master 的 index.js 仅在打 tag 时更新）
+// 跟踪 master 最新产物（master 的 index.js 仅在打 tag 时更新）
 // @require https://cdn.jsdelivr.net/gh/linch90/userscript-libs@master/index.js
 ```
 
