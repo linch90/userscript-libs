@@ -1,19 +1,17 @@
-# 打版本 tag 时编译 index.js 并发布到 master 根目录。
+# master push 时编译 index.js 发布到 master 根目录，并打版本 tag。
 #
 # 工作流：
-#   1. 本地：git tag v1.0.0 && git push --tags
-#   2. 本 Action 触发：npm run build 生成 dist/index.js
-#   3. 把 dist/index.js 复制到 master 根目录 index.js 并提交
-#   4. 把触发 tag（如 v1.0.0）移动到含产物的 commit 上
-#   5. jsDelivr 可通过 @v1.0.0/index.js 引用锁定版本
+#   1. 本地：npm run release -- patch  → 改 package.json version + commit 源码 + push master（不打 tag）
+#   2. 本 Action 由 master push 触发：npm run build → 把 dist/index.js 提交到 master 根 index.js
+#   3. 在产物 commit 上打 tag v<version>（全新 tag，不 move）→ push tag
+#   4. jsDelivr 可通过 @v<version>/index.js 引用，tag 从诞生即指向含产物 commit，无缓存问题
 #
-# 仅 tag 时 build：master 根目录 index.js 跟随发版更新，平时源码 push 不触发。
+# 触发条件：仅 master push 且 package.json version 比最新 tag 新时发布。
 name: release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [master]
 
 permissions:
   contents: write
@@ -21,8 +19,10 @@ permissions:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    # 仅当 package.json version 与已存在 tag 不同时才发版（避免每次普通 push 都发）
+    if: true
     steps:
-      - name: Checkout tag
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -36,44 +36,59 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      - name: Read version
+        id: ver
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+          # 判断该 tag 是否已存在；已存在则跳过发布
+          if git rev-parse "refs/tags/v$VERSION" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Build
+        if: steps.ver.outputs.exists == 'false'
         run: npm run build
 
       - name: Verify artifact
+        if: steps.ver.outputs.exists == 'false'
         run: |
           test -f dist/index.js || { echo "dist/index.js missing"; exit 1; }
           echo "artifact size: $(wc -c < dist/index.js) bytes"
 
-      - name: Publish index.js to master
+      - name: Publish index.js to master and tag
+        if: steps.ver.outputs.exists == 'false'
+        env:
+          TAG: ${{ steps.ver.outputs.tag }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          TAG=${GITHUB_REF_NAME}
-          echo "Releasing tag: $TAG"
-
-          # 保留产物到 /tmp，切到 master 后再放回根目录
+          # 保留产物，切回 master（checkout 默认已在 master），放产物到根
           cp dist/index.js /tmp/index.js
           git checkout master
           cp /tmp/index.js index.js
 
-          # add 后用 --cached 判断是否有待提交内容（新文件也能检出）
           git add index.js
           if git diff --cached --quiet; then
-            echo "index.js unchanged, nothing to commit"
+            echo "index.js unchanged"
+            # 产物无变化也仍要打 tag（标记此版本发布点）
           else
             git commit -m "chore: build index.js for $TAG"
             git push origin master
           fi
 
-          # 把 tag 移到含产物的 commit，使 @<tag>/index.js 可用
-          git tag -f "$TAG"
-          git push origin "refs/tags/$TAG" --force
+          # 在当前（产物）commit 上打全新 tag 并 push（不 move 既有 tag）
+          git tag "$TAG"
+          git push origin "refs/tags/$TAG"
 
-      - name: Purge jsDelivr cache for the new tag
+      - name: Purge jsDelivr cache
+        if: steps.ver.outputs.exists == 'false'
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.ver.outputs.tag }}
         run: |
-          # jsDelivr 会缓存文件；新 tag 首次拉取通常无需 purge，但请求一下加速生效
           curl -sL -o /dev/null -w "purge: %{http_code}\n" \
             "https://purge.jsdelivr.net/gh/linch90/userscript-libs@${TAG}/index.js" || true
