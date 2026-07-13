@@ -1,3 +1,46 @@
+/**
+ * @fileoverview userscript-libs JSDoc 类型声明（供 ScriptCat 编辑器补全）。
+ * 构建时由 scripts/prepend-typedef.mjs 将本文件内容前置到 dist/index.js，
+ * 确保这些 @typedef 在所有函数 @param 引用之前，供 Monaco/ScriptCat 编辑器解析。
+ */
+
+/**
+ * @typedef {Object} USLGmRequestOptions
+ * @property {string} url - 请求 URL
+ * @property {"GET"|"POST"|"PUT"|"DELETE"|"PATCH"|"HEAD"|"OPTIONS"} method - HTTP 方法
+ * @property {Record<string, unknown>} [headers] - 请求头
+ * @property {*} [data] - 请求体
+ * @property {number} [timeout] - 超时 ms
+ * @property {(response: GMTypes.XHRResponse) => (Partial<GMTypes.XHRDetails>|false|void|Promise<Partial<GMTypes.XHRDetails>|false|void>)} [onUnauthorized] - 401 回调：返回部分字段重试 / false 抛 UnauthorizedError
+ * @property {number} [maxRetry] - 401 最大重试次数，默认 1
+ */
+
+/**
+ * @typedef {Object} USLLogger
+ * @property {(...args: unknown[]) => void} debug
+ * @property {(...args: unknown[]) => void} info
+ * @property {(...args: unknown[]) => void} warn
+ * @property {(...args: unknown[]) => void} error
+ * @property {(tag: string) => USLLogger} tag - 创建带前缀的子 logger
+ */
+
+/**
+ * @typedef {Object} USLLoginFlowOptions
+ * @property {string} url - 请求 URL
+ * @property {"GET"|"POST"|"PUT"|"DELETE"|"PATCH"|"HEAD"|"OPTIONS"} method - HTTP 方法
+ * @property {Record<string, unknown>} [headers] - 请求头
+ * @property {*} [data] - 请求体
+ * @property {number} [timeout] - 超时 ms
+ * @property {string} loginUrl - 登录页 URL，点击通知后 GM_openInTab 打开
+ * @property {string} loginSignalKey - 前台脚本登录成功后 GM_setValue 的 key
+ * @property {GMTypes.XHRDetails} [probeRequest] - 专用探测请求；不传则用原始请求重试探测
+ * @property {number} [pollInterval] - 轮询间隔 ms，默认 10000
+ * @property {number} [loginTimeout] - 登录流程总超时 ms，默认 300000 (5min)
+ * @property {string} [notificationText] - 通知文案，默认「点击去登录」
+ * @property {string} [notificationTitle] - 通知标题
+ * @property {boolean} [autoOpenLogin] - 401 时自动打开登录页，默认 false
+ */
+
 "use strict";
 /**
  * GM.xmlHttpRequest 的 Promise 封装，并对 401 提供可配置回调。
@@ -65,8 +108,10 @@ var USL;
     }
     USL.rawXhr = rawXhr;
     /**
-     * 发起 GM 请求，返回 Promise<GM.XhrResponse>。
+     * 发起 GM 请求，返回 Promise<GM.XhrResponse>。401 时按 onUnauthorized 处理。
      *
+     * @param {USLGmRequestOptions} options - 请求配置（含 url/method/headers/timeout/onUnauthorized/maxRetry）
+     * @returns {Promise<GMTypes.XHRResponse>} 响应对象
      * @example
      * const resp = await USL.gmRequest({
      *   method: "GET",
@@ -111,7 +156,12 @@ var USL;
         }
     }
     USL.gmRequest = gmRequest;
-    /** 取 responseText 并按 JSON 解析 */
+    /**
+     * 发起 GM 请求并将 responseText 按 JSON 解析返回。
+     * @template T - 期望的响应数据类型
+     * @param {USLGmRequestOptions} options - 请求配置
+     * @returns {Promise<T>} 解析后的 JSON 数据
+     */
     async function gmRequestJson(options) {
         const resp = await gmRequest(options);
         try {
@@ -187,7 +237,8 @@ var USL;
             tag: (t) => createLogger(prefix ? `${prefix}:${t}` : t),
         };
     }
-    /** 默认 logger，无前缀 */
+    /** 默认 logger，无前缀。
+     * @type {USLLogger} */
     USL.logger = createLogger("");
 })(USL || (USL = {}));
 /// <reference path="./logger.ts" />
@@ -324,7 +375,13 @@ var USL;
     }
     /**
      * 带登录引导的请求：401 时弹通知引导用户登录，登录成功后重试原请求。
+     * ScriptCat 后台/定时脚本专用（前台也可用）。登录成功检测：前台脚本
+     * GM_setValue(loginSignalKey, true) 触发监听 + 轮询探测，任一即解除。
+     * 超时抛 LoginTimeoutError。
      *
+     * @param {USLLoginFlowOptions} options - 请求配置（含 url/method + 登录流程字段）
+     * @returns {Promise<GMTypes.XHRResponse>} 登录后重试成功的响应
+     * @throws {USL.LoginTimeoutError} loginTimeout 内未登录成功
      * @example
      * const resp = await USL.gmRequestWithLogin({
      *   method: "GET",
@@ -366,17 +423,15 @@ var USL;
  *
  * 编译后通过 @require 引入；所有功能挂在全局命名空间 `USL` 上：
  *
- *   // @require https://your.cdn/userscript-libs/dist/index.js
+ *   // @require https://cdn.jsdelivr.net/gh/linch90/userscript-libs@v0.1.3/index.js
  *   const { gmRequest, gmRequestWithLogin, logger, UnauthorizedError } = USL;
  *   const resp = await gmRequest({ method: "GET", url: "..." });
  *   logger.info("done", resp.status);
  *
  * 在 ScriptCat 后台/定时脚本中同样可用（GM API 与前台一致，无 DOM）。
  *
- * 结构：logger.ts / gmRequest.ts 各以 `namespace USL` 贡献成员，三个文件
- * 均为全局 script（无顶层 import/export），由 tsconfig include 收入同一
- * program 后 TypeScript 自动合并同名 namespace。module:none 下编译产物为
- * 挂载到全局的 IIFE，@require 友好。
+ * 结构：logger.ts / gmRequest.ts / loginFlow.ts 各以 `namespace USL` 贡献成员，
+ * 均为全局 script，由 outFile 拼接合并。
  */
 /// <reference path="./logger.ts" />
 /// <reference path="./gmRequest.ts" />
