@@ -52,16 +52,16 @@ jobs:
           TAG=${GITHUB_REF_NAME}
           echo "Releasing tag: $TAG"
 
-          # 切到 master 分支（保留 dist/index.js 产物在工作区）
+          # 保留产物到 /tmp，切到 master 后再放回根目录
           cp dist/index.js /tmp/index.js
           git checkout master
           cp /tmp/index.js index.js
 
-          # 若产物无变化则跳过提交
-          if git diff --quiet -- index.js; then
+          # add 后用 --cached 判断是否有待提交内容（新文件也能检出）
+          git add index.js
+          if git diff --cached --quiet; then
             echo "index.js unchanged, nothing to commit"
           else
-            git add index.js
             git commit -m "chore: build index.js for $TAG"
             git push origin master
           fi
