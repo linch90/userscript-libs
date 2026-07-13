@@ -24,34 +24,41 @@
 
 // ============================= 全局挂载 =============================
 //
-// module:none 下 `namespace USL` 编译为全局 `var USL`，理论上已是全局；
-// 但油猴脚本本体常被沙箱闭包包裹，需显式挂到 unsafeWindow 才能可靠访问。
-// ScriptCat 后台脚本无 unsafeWindow，回退到 globalThis/self。
+// module:none 下 `namespace USL` 编译为顶层 `var USL`，但 @require 引入时
+// 管理器可能把库代码包进闭包，导致 `USL` 不暴露到用户脚本作用域。
+// 故显式挂到所有可用的全局对象，让用户脚本从任一处都能访问：
+//   USL / unsafeWindow.USL / window.USL / globalThis.USL / self.USL
+//
+// 关键：挂到「所有」而非「第一个」，因为 @require 拼接的脚本作用域
+// 与 unsafeWindow / globalThis 在沙箱里可能是不同对象，只挂一处会漏。
 
 (function attachGlobal(this: unknown) {
+  const targets: any[] = [];
   try {
-    let root: any = undefined;
+    // @ts-ignore unsafeWindow 仅油猴环境存在，grant 后可用
+    if (typeof unsafeWindow !== "undefined") targets.push(unsafeWindow);
+  } catch {}
+  try {
+    if (typeof globalThis !== "undefined") targets.push(globalThis as any);
+  } catch {}
+  try {
+    // @ts-ignore self 在 worker/后台可用
+    if (typeof self !== "undefined") targets.push(self);
+  } catch {}
+  try {
+    // @ts-ignore window 前台脚本可用
+    if (typeof window !== "undefined") targets.push(window as any);
+  } catch {}
+  try {
+    // @ts-ignore 非 strict 模式下的 this 也可作为全局回退
+    if (this) targets.push(this as any);
+  } catch {}
+
+  for (const t of targets) {
     try {
-      // @ts-ignore unsafeWindow 仅油猴环境存在
-      if (typeof unsafeWindow !== "undefined") root = unsafeWindow;
-    } catch {}
-    if (!root) {
-      try {
-        if (typeof globalThis !== "undefined") root = globalThis as any;
-      } catch {}
+      if (t && !t.USL) t.USL = USL;
+    } catch {
+      /* 某些全局对象可能只读或抛错，忽略单个失败 */
     }
-    if (!root) {
-      try {
-        // @ts-ignore self 在 worker/WebWorker 后台可用
-        if (typeof self !== "undefined") root = self;
-      } catch {}
-    }
-    if (!root) {
-      // @ts-ignore 非 strict 模式回退
-      root = this;
-    }
-    if (root) (root as any).USL = USL;
-  } catch {
-    /* 挂载失败时忽略，namespace 本身仍可能作为全局可见 */
   }
 })();
