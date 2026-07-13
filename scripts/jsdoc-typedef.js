@@ -1,0 +1,42 @@
+/**
+ * @fileoverview userscript-libs JSDoc 类型声明（供 ScriptCat 编辑器补全）。
+ * 构建时由 scripts/prepend-typedef.mjs 将本文件内容前置到 dist/index.js，
+ * 确保这些 @typedef 在所有函数 @param 引用之前，供 Monaco/ScriptCat 编辑器解析。
+ */
+
+/**
+ * @typedef {Object} USLGmRequestOptions
+ * @property {string} url - 请求 URL
+ * @property {"GET"|"POST"|"PUT"|"DELETE"|"PATCH"|"HEAD"|"OPTIONS"} method - HTTP 方法
+ * @property {Record<string, unknown>} [headers] - 请求头
+ * @property {*} [data] - 请求体
+ * @property {number} [timeout] - 超时 ms
+ * @property {(response: GMTypes.XHRResponse) => (Partial<GMTypes.XHRDetails>|false|void|Promise<Partial<GMTypes.XHRDetails>|false|void>)} [onUnauthorized] - 401 回调：返回部分字段重试 / false 抛 UnauthorizedError
+ * @property {number} [maxRetry] - 401 最大重试次数，默认 1
+ */
+
+/**
+ * @typedef {Object} USLLogger
+ * @property {(...args: unknown[]) => void} debug
+ * @property {(...args: unknown[]) => void} info
+ * @property {(...args: unknown[]) => void} warn
+ * @property {(...args: unknown[]) => void} error
+ * @property {(tag: string) => USLLogger} tag - 创建带前缀的子 logger
+ */
+
+/**
+ * @typedef {Object} USLLoginFlowOptions
+ * @property {string} url - 请求 URL
+ * @property {"GET"|"POST"|"PUT"|"DELETE"|"PATCH"|"HEAD"|"OPTIONS"} method - HTTP 方法
+ * @property {Record<string, unknown>} [headers] - 请求头
+ * @property {*} [data] - 请求体
+ * @property {number} [timeout] - 超时 ms
+ * @property {string} loginUrl - 登录页 URL，点击通知后 GM_openInTab 打开
+ * @property {string} loginSignalKey - 前台脚本登录成功后 GM_setValue 的 key
+ * @property {GMTypes.XHRDetails} [probeRequest] - 专用探测请求；不传则用原始请求重试探测
+ * @property {number} [pollInterval] - 轮询间隔 ms，默认 10000
+ * @property {number} [loginTimeout] - 登录流程总超时 ms，默认 300000 (5min)
+ * @property {string} [notificationText] - 通知文案，默认「点击去登录」
+ * @property {string} [notificationTitle] - 通知标题
+ * @property {boolean} [autoOpenLogin] - 401 时自动打开登录页，默认 false
+ */

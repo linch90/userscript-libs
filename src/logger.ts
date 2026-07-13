@@ -80,6 +80,7 @@ namespace USL {
     };
   }
 
-  /** 默认 logger，无前缀 */
+  /** 默认 logger，无前缀。
+   * @type {USLLogger} */
   export const logger: Logger = createLogger("");
 }

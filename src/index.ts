@@ -5,17 +5,15 @@
  *
  * 编译后通过 @require 引入；所有功能挂在全局命名空间 `USL` 上：
  *
- *   // @require https://your.cdn/userscript-libs/dist/index.js
+ *   // @require https://cdn.jsdelivr.net/gh/linch90/userscript-libs@v0.1.3/index.js
  *   const { gmRequest, gmRequestWithLogin, logger, UnauthorizedError } = USL;
  *   const resp = await gmRequest({ method: "GET", url: "..." });
  *   logger.info("done", resp.status);
  *
  * 在 ScriptCat 后台/定时脚本中同样可用（GM API 与前台一致，无 DOM）。
  *
- * 结构：logger.ts / gmRequest.ts 各以 `namespace USL` 贡献成员，三个文件
- * 均为全局 script（无顶层 import/export），由 tsconfig include 收入同一
- * program 后 TypeScript 自动合并同名 namespace。module:none 下编译产物为
- * 挂载到全局的 IIFE，@require 友好。
+ * 结构：logger.ts / gmRequest.ts / loginFlow.ts 各以 `namespace USL` 贡献成员，
+ * 均为全局 script，由 outFile 拼接合并。
  */
 
 /// <reference path="./logger.ts" />

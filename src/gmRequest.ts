@@ -101,8 +101,10 @@ namespace USL {
   }
 
   /**
-   * 发起 GM 请求，返回 Promise<GM.XhrResponse>。
+   * 发起 GM 请求，返回 Promise<GM.XhrResponse>。401 时按 onUnauthorized 处理。
    *
+   * @param {USLGmRequestOptions} options - 请求配置（含 url/method/headers/timeout/onUnauthorized/maxRetry）
+   * @returns {Promise<GMTypes.XHRResponse>} 响应对象
    * @example
    * const resp = await USL.gmRequest({
    *   method: "GET",
@@ -160,7 +162,12 @@ namespace USL {
     }
   }
 
-  /** 取 responseText 并按 JSON 解析 */
+  /**
+   * 发起 GM 请求并将 responseText 按 JSON 解析返回。
+   * @template T - 期望的响应数据类型
+   * @param {USLGmRequestOptions} options - 请求配置
+   * @returns {Promise<T>} 解析后的 JSON 数据
+   */
   export async function gmRequestJson<T = unknown>(
     options: GmRequestOptions,
   ): Promise<T> {

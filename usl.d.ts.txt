@@ -1,0 +1,118 @@
+// ============================================================
+// userscript-libs (USL) 类型声明 —— 内联到用户脚本头
+// 粘贴位置：用户脚本 // ==/UserScript== 之后、业务代码之前
+// 作用：让 VS Code 等 IDE 对 USL.xxx 提供自动补全与类型检查
+// 对齐版本：linch90/userscript-libs@v0.1.2
+// ============================================================
+
+// ---- GM xhr 相关类型（@toil/gm-types 子集，自包含无需依赖） ----
+declare namespace USLTypes {
+  type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
+  type XHRBody = File | object | unknown[] | XMLHttpRequestBodyInit | null;
+
+  interface XhrDetails {
+    url: string;
+    method: HttpMethod;
+    headers?: Record<string, unknown>;
+    data?: XHRBody;
+    timeout?: number;
+    responseType?: "text" | "json" | "arrayBuffer" | "blob" | "document" | "stream";
+    anonymous?: boolean;
+    user?: string;
+    password?: string;
+    overrideMimeType?: string;
+    nocache?: boolean;
+    /** 库内部控制流会覆盖这些回调，传入也会被忽略 */
+    onload?: (resp: XhrResponse) => any;
+    onerror?: (err: XhrResponse | Error) => any;
+    ontimeout?: () => any;
+    [k: string]: unknown;
+  }
+
+  interface XhrResponse {
+    status: number;
+    statusText: string;
+    responseText: string;
+    responseHeaders: string;
+    finalUrl: string;
+    response?: any;
+    responseXML?: Document | null;
+    readyState?: 0 | 1 | 2 | 3 | 4;
+    error?: string;
+    [k: string]: unknown;
+  }
+}
+
+declare namespace USL {
+  // ---- gmRequest ----
+  /** 401 专用错误 */
+  class UnauthorizedError extends Error {
+    readonly response: USLTypes.XhrResponse;
+  }
+
+  interface GmRequestOptions extends USLTypes.XhrDetails {
+    /**
+     * 401 命中时的回调。
+     * - 返回 Partial<XhrDetails>：合并到原请求后重试
+     * - 返回 false / void：reject UnauthorizedError
+     */
+    onUnauthorized?: (
+      response: USLTypes.XhrResponse,
+      retry: (details: USLTypes.XhrDetails) => Promise<USLTypes.XhrResponse>
+    ) => Partial<USLTypes.XhrDetails> | false | void | Promise<Partial<USLTypes.XhrDetails> | false | void>;
+    /** 401 回调触发的最大重试次数，默认 1 */
+    maxRetry?: number;
+  }
+
+  /** 封装 GM.xmlHttpRequest 为 Promise，对 401 提供可配置回调 */
+  function gmRequest(options: GmRequestOptions): Promise<USLTypes.XhrResponse>;
+  /** gmRequest + JSON.parse(responseText) */
+  function gmRequestJson<T = unknown>(options: GmRequestOptions): Promise<T>;
+  /** 底层 xhr（不走 401 重试逻辑） */
+  function rawXhr(details: USLTypes.XhrDetails): Promise<USLTypes.XhrResponse>;
+
+  // ---- logger ----
+  type LogLevel = "debug" | "info" | "warn" | "error";
+  interface Logger {
+    debug(...args: unknown[]): void;
+    info(...args: unknown[]): void;
+    warn(...args: unknown[]): void;
+    error(...args: unknown[]): void;
+    /** 创建带前缀的子 logger */
+    tag(tag: string): Logger;
+  }
+  const logger: Logger;
+  /** 是否运行在 ScriptCat 环境 */
+  function isScriptCat(): boolean;
+
+  // ---- loginFlow ----
+  /** 登录超时错误 */
+  class LoginTimeoutError extends Error {}
+
+  interface LoginFlowOptions extends USLTypes.XhrDetails {
+    /** 登录页 URL，点击通知后 GM_openInTab 打开 */
+    loginUrl: string;
+    /** 前台脚本登录成功后 GM_setValue 的 key，后台监听该 key 变真值 */
+    loginSignalKey: string;
+    /** 专用探测请求；不传则用原始请求重试探测 */
+    probeRequest?: USLTypes.XhrDetails;
+    /** 轮询间隔 ms，默认 10000 */
+    pollInterval?: number;
+    /** 登录流程总超时 ms，默认 300000 (5min) */
+    loginTimeout?: number;
+    /** 通知文案，默认「点击去登录」 */
+    notificationText?: string;
+    /** 通知标题，默认取 GM_info.script.name 或「登录」 */
+    notificationTitle?: string;
+    /** 401 时自动打开登录页（不等用户点通知），默认 false */
+    autoOpenLogin?: boolean;
+    onUnauthorized?: (
+      response: USLTypes.XhrResponse,
+      retry: (details: USLTypes.XhrDetails) => Promise<USLTypes.XhrResponse>
+    ) => Partial<USLTypes.XhrDetails> | false | void | Promise<Partial<USLTypes.XhrDetails> | false | void>;
+    maxRetry?: number;
+  }
+
+  /** 401 时引导登录后继续流程（ScriptCat 后台/定时脚本专用，前台也可用） */
+  function gmRequestWithLogin(options: LoginFlowOptions): Promise<USLTypes.XhrResponse>;
+}

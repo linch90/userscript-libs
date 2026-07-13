@@ -176,7 +176,13 @@ namespace USL {
 
   /**
    * 带登录引导的请求：401 时弹通知引导用户登录，登录成功后重试原请求。
+   * ScriptCat 后台/定时脚本专用（前台也可用）。登录成功检测：前台脚本
+   * GM_setValue(loginSignalKey, true) 触发监听 + 轮询探测，任一即解除。
+   * 超时抛 LoginTimeoutError。
    *
+   * @param {USLLoginFlowOptions} options - 请求配置（含 url/method + 登录流程字段）
+   * @returns {Promise<GMTypes.XHRResponse>} 登录后重试成功的响应
+   * @throws {USL.LoginTimeoutError} loginTimeout 内未登录成功
    * @example
    * const resp = await USL.gmRequestWithLogin({
    *   method: "GET",
