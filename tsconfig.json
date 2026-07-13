@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    /* 语言：namespace+module:none 编译为挂载到全局的 IIFE，适配 @require 直接拼接 */
+    "target": "ES2019",
+    "module": "none",
+    "moduleResolution": "node",
+    "lib": ["ES2019", "DOM"],
+
+    /* 输出：module:none 下 outFile 把所有 script 按依赖顺序拼成单文件，@require 友好 */
+    "outFile": "./dist/index.js",
+    "rootDir": "./src",
+    "sourceMap": true,
+
+    /* 类型与严格性 */
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+
+    /* 前台 GM 类型基础用 @toil/gm-types/v4；ScriptCat GM.api / GM.log / unsafeWindow 等差异见 src/types/scriptcat.d.ts */
+    "types": ["@toil/gm-types"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
