@@ -53,31 +53,27 @@ https://github.com/linch90/userscript-libs/actions
 
 ## ScriptCat 编辑器补全
 
-`@require` 引入的库函数 JSDoc 不被 ScriptCat 编辑器（Monaco）跨文件解析，直接敲
-`USL.` 不会弹成员、`USL.gmRequest(` 不会弹参数字段，且会报 `'USL' is not defined`。
+ScriptCat 编辑器（Monaco）不解析 `@require` 库的 JSDoc，直接敲 `USL.` 不弹成员、
+`USL.gmRequest(` 不弹参数字段。但 ScriptCat 提供了「编辑器类型定义」全局类型源：
+**设置 → 编辑器类型定义**输入框（里面已内置 `GMTypes` 等声明）。
 
-解决：把仓库根的 [`usl-snippet.js`](./usl-snippet.js) 整块粘贴到用户脚本
-`// ==/UserScript==` 之后。它在用户脚本内重建 `USL` 对象（每个方法带 `@param` JSDoc
-转调真实库），让编辑器既弹成员名、又弹参数字段，同时消除未定义报错。
+把仓库根的 [`usl.d.ts`](./usl.d.ts) 内容**追加**到该输入框现有内容之后（保留原内容，
+勿覆盖）。之后所有用户脚本里 `USL.` 弹成员、`USL.gmRequest({` 弹参数字段，一次配置
+全局生效，无需在每个脚本粘贴。`usl.d.ts` 依赖输入框已有的 `GMTypes.XHRDetails` /
+`GMTypes.XHRResponse`。
 
 ```js
 // ==UserScript==
 // ...
-// @require https://cdn.jsdelivr.net/gh/linch90/userscript-libs@v0.1.3/index.js
+// @require https://cdn.jsdelivr.net/gh/linch90/userscript-libs@v0.1.4/index.js
 // ==/UserScript==
 
-// ↓ 粘贴 usl-snippet.js 内容（约 70 行）
-// ... typedef + const _USL = ...USL + const USL = { gmRequest, ... } ...
-
-// 之后即可补全：
 USL.gmRequest({ method: "GET", url: "..." });   // 弹 url/method/onUnauthorized...
 USL.logger.info("hi");                           // 弹 info/warn/...
 ```
 
-> snippet 与版本对齐，发版时版本号注释会随 `usl-snippet.js` 更新。
-> Monaco 对 `@typedef` 中函数类型 property 的成员列表补全不完整，故 snippet
-> 采用「重建真实对象 + 每方法自带 @param」而非纯 typedef，以同时拿到成员列表
-> 与参数字段提示。
+> d.ts 可直接从 jsDelivr 取：`https://cdn.jsdelivr.net/gh/linch90/userscript-libs@v0.1.4/usl.d.ts`
+> （浏览器打开复制其内容追加到编辑器类型定义输入框）。
 
 ## 在油猴脚本中使用
 
