@@ -6,7 +6,7 @@
  * 编译后通过 @require 引入；所有功能挂在全局命名空间 `USL` 上：
  *
  *   // @require https://your.cdn/userscript-libs/dist/index.js
- *   const { gmRequest, logger, UnauthorizedError } = USL;
+ *   const { gmRequest, gmRequestWithLogin, logger, UnauthorizedError } = USL;
  *   const resp = await gmRequest({ method: "GET", url: "..." });
  *   logger.info("done", resp.status);
  *
@@ -20,6 +20,7 @@
 
 /// <reference path="./logger.ts" />
 /// <reference path="./gmRequest.ts" />
+/// <reference path="./loginFlow.ts" />
 
 // ============================= 全局挂载 =============================
 //

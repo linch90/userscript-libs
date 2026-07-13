@@ -45,6 +45,57 @@ declare global {
 
   function GM_log(...args: unknown[]): void;
 
+  // ---- ScriptCat / 油猴全局 GM_* 函数（与 GM.* 等价的同步形式） ----
+  // ScriptCat 的 GM_addValueChangeListener 返回 number（同步），与
+  // @toil/v4 声明的 Promise<string> 不符，故在此独立声明，实现优先用全局形式。
+
+  /** 写入 GM 存储；前台脚本登录成功后用它写登录标记 */
+  function GM_setValue(name: string, value: unknown): void;
+
+  /** 监听指定 key 的值变化（可跨脚本实例/前台后台通信）。返回监听 id（同步）。
+   *  后台脚本监听才有 tabid 参数。remote=true 表示来自其它脚本实例。 */
+  type GM_ValueChangeListener = (
+    name: string,
+    oldValue: unknown,
+    newValue: unknown,
+    remote: boolean,
+    tabid?: number
+  ) => void;
+  function GM_addValueChangeListener(
+    name: string,
+    listener: GM_ValueChangeListener
+  ): number;
+  function GM_removeValueChangeListener(listenerId: number): void;
+
+  /** 打开新标签页 */
+  type GM_Tab = { close(): void; onclose?: () => void; closed?: boolean };
+  function GM_openInTab(
+    url: string,
+    options?: { active?: boolean; insert?: boolean | number; setBrowser?: boolean }
+  ): GM_Tab;
+  function GM_openInTab(url: string, loadInBackground: boolean): GM_Tab;
+
+  /** 桌面通知；onclick 在用户点击通知时触发 */
+  interface GM_NotificationDetails {
+    text: string;
+    title?: string;
+    image?: string;
+    highlight?: boolean;
+    timeout?: number;
+    onclick?: () => void;
+    ondone?: (clicked: boolean) => void;
+  }
+  function GM_notification(
+    details: GM_NotificationDetails,
+    ondone?: (clicked: boolean) => void
+  ): void;
+  function GM_notification(
+    text: string,
+    title?: string,
+    image?: string,
+    onclick?: () => void
+  ): void;
+
   // ---- 声明合并：给 @toil/gm-types/v4 的 namespace GM 追加成员 ----
   namespace GM {
     /** 请求详情类型（重导出自 toil，供全局 script 裸名引用） */
@@ -55,6 +106,12 @@ declare global {
     /** 写入脚本管理器日志面板；ScriptCat 后台脚本日志亦走此入口 */
     function log(...args: unknown[]): void;
     function console(...args: unknown[]): void;
+
+    /** 打开新标签页（重导出全局 GM_openInTab 的等价 GM.* 形式） */
+    function openInTab(
+      url: string,
+      options?: { active?: boolean; insert?: boolean | number }
+    ): GM_Tab;
   }
 }
 

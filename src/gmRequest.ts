@@ -59,8 +59,9 @@ namespace USL {
 
   /** 底层执行一次 xmlHttpRequest，返回 Promise。
    *  ScriptCat 后台脚本与前台一致，均为 callback 风格（onload/onerror），
-   *  返回 AbortHandle 而非 Promise，故统一在此包成 Promise。 */
-  function rawXhr(details: GM.XhrDetails): Promise<GM.XhrResponse> {
+   *  返回 AbortHandle 而非 Promise，故统一在此包成 Promise。
+   *  导出供 loginFlow.ts 等做探测请求复用（不走 gmRequest 的 401 重试逻辑）。 */
+  export function rawXhr(details: GM.XhrDetails): Promise<GM.XhrResponse> {
     const g = typeof globalThis !== "undefined" ? globalThis : ({} as any);
     const fn: ((d: GM.XhrDetails) => void) | undefined =
       typeof g.GM_xmlhttpRequest === "function"
