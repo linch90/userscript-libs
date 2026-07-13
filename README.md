@@ -51,6 +51,34 @@ https://github.com/linch90/userscript-libs/actions
 
 > 仅打 tag 时才会 build 并更新 master 根目录的 `index.js`；普通 push 源码不触发产物更新。
 
+## ScriptCat 编辑器补全
+
+`@require` 引入的库函数 JSDoc 不被 ScriptCat 编辑器（Monaco）跨文件解析，直接敲
+`USL.` 不会弹成员、`USL.gmRequest(` 不会弹参数字段，且会报 `'USL' is not defined`。
+
+解决：把仓库根的 [`usl-snippet.js`](./usl-snippet.js) 整块粘贴到用户脚本
+`// ==/UserScript==` 之后。它在用户脚本内重建 `USL` 对象（每个方法带 `@param` JSDoc
+转调真实库），让编辑器既弹成员名、又弹参数字段，同时消除未定义报错。
+
+```js
+// ==UserScript==
+// ...
+// @require https://cdn.jsdelivr.net/gh/linch90/userscript-libs@v0.1.3/index.js
+// ==/UserScript==
+
+// ↓ 粘贴 usl-snippet.js 内容（约 70 行）
+// ... typedef + const _USL = ...USL + const USL = { gmRequest, ... } ...
+
+// 之后即可补全：
+USL.gmRequest({ method: "GET", url: "..." });   // 弹 url/method/onUnauthorized...
+USL.logger.info("hi");                           // 弹 info/warn/...
+```
+
+> snippet 与版本对齐，发版时版本号注释会随 `usl-snippet.js` 更新。
+> Monaco 对 `@typedef` 中函数类型 property 的成员列表补全不完整，故 snippet
+> 采用「重建真实对象 + 每方法自带 @param」而非纯 typedef，以同时拿到成员列表
+> 与参数字段提示。
+
 ## 在油猴脚本中使用
 
 ```js
