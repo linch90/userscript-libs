@@ -13,16 +13,46 @@
 
 ```bash
 npm install
-npm run build      # 输出到 dist/index.js（+ .d.ts / .map）
+npm run build      # 输出到 dist/index.js（+ .map）
 npm run watch      # 监听变更自动编译
 ```
 
 产物 `dist/index.js` 为单文件 IIFE，无 CommonJS 包裹，`@require` 拼接后挂载全局 `USL`。
 
+## 发布与引用（jsDelivr）
+
+发布流程由 GitHub Actions 自动完成（`.github/workflows/release.yml`）：
+
+1. 改源码，更新 `package.json` 的 `version`。
+2. 本地提交并推送：
+   ```bash
+   git add -A && git commit -m "feat: xxx"
+   git push
+   ```
+3. 打版本 tag 触发发布：
+   ```bash
+   git tag v0.1.0
+   git push --tags
+   ```
+4. Action 自动 `npm run build`，把 `dist/index.js` 复制到 **master 根目录 `index.js`** 并提交，
+   再把 tag 移到含产物的 commit 上。
+
+之后即可在油猴脚本中 `@require`：
+
+```js
+// 锁定版本（推荐，永不变化）
+// @require https://cdn.jsdelivr.net/gh/linch90/userscript-libs@v0.1.0/index.js
+
+// 跟踪 master 最新产物（注意 master 的 index.js 仅在打 tag 时更新）
+// @require https://cdn.jsdelivr.net/gh/linch90/userscript-libs@master/index.js
+```
+
+> 仅打 tag 时才会 build 并更新 master 根目录的 `index.js`；普通 push 源码不触发产物更新。
+
 ## 在油猴脚本中使用
 
 ```js
-// @require https://your.cdn/userscript-libs/dist/index.js
+// @require https://cdn.jsdelivr.net/gh/linch90/userscript-libs@v0.1.0/index.js
 
 const { gmRequest, gmRequestJson, logger, UnauthorizedError } = USL;
 

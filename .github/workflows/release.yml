@@ -1,0 +1,79 @@
+# 打版本 tag 时编译 index.js 并发布到 master 根目录。
+#
+# 工作流：
+#   1. 本地：git tag v1.0.0 && git push --tags
+#   2. 本 Action 触发：npm run build 生成 dist/index.js
+#   3. 把 dist/index.js 复制到 master 根目录 index.js 并提交
+#   4. 把触发 tag（如 v1.0.0）移动到含产物的 commit 上
+#   5. jsDelivr 可通过 @v1.0.0/index.js 引用锁定版本
+#
+# 仅 tag 时 build：master 根目录 index.js 跟随发版更新，平时源码 push 不触发。
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify artifact
+        run: |
+          test -f dist/index.js || { echo "dist/index.js missing"; exit 1; }
+          echo "artifact size: $(wc -c < dist/index.js) bytes"
+
+      - name: Publish index.js to master
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          TAG=${GITHUB_REF_NAME}
+          echo "Releasing tag: $TAG"
+
+          # 切到 master 分支（保留 dist/index.js 产物在工作区）
+          cp dist/index.js /tmp/index.js
+          git checkout master
+          cp /tmp/index.js index.js
+
+          # 若产物无变化则跳过提交
+          if git diff --quiet -- index.js; then
+            echo "index.js unchanged, nothing to commit"
+          else
+            git add index.js
+            git commit -m "chore: build index.js for $TAG"
+            git push origin master
+          fi
+
+          # 把 tag 移到含产物的 commit，使 @<tag>/index.js 可用
+          git tag -f "$TAG"
+          git push origin "refs/tags/$TAG" --force
+
+      - name: Purge jsDelivr cache for the new tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          # jsDelivr 会缓存文件；新 tag 首次拉取通常无需 purge，但请求一下加速生效
+          curl -sL -o /dev/null -w "purge: %{http_code}\n" \
+            "https://purge.jsdelivr.net/gh/linch90/userscript-libs@${TAG}/index.js" || true
