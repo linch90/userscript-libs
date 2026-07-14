@@ -62,7 +62,7 @@ namespace USL {
      */
     onUnauthorized?: (
       response: GM.XhrResponse,
-      retry: (details: GM.XhrDetails) => Promise<GM.XhrResponse>
+      retry: (details: GM.XhrDetails) => Promise<GM.XhrResponse>,
     ) =>
       | Partial<GM.XhrDetails>
       | false
@@ -105,10 +105,17 @@ namespace USL {
   function pickAddValueChangeListener():
     | ((
         name: string,
-        listener: (name: string, oldV: unknown, newV: unknown, remote: boolean, tabid?: number) => unknown
+        listener: (
+          name: string,
+          oldV: unknown,
+          newV: unknown,
+          remote: boolean,
+          tabid?: number,
+        ) => unknown,
       ) => number | Promise<number>)
     | undefined {
-    if (typeof g.GM_addValueChangeListener === "function") return g.GM_addValueChangeListener;
+    if (typeof g.GM_addValueChangeListener === "function")
+      return g.GM_addValueChangeListener;
     if (gmObj && typeof gmObj.addValueChangeListener === "function") {
       return (name, listener) => gmObj.addValueChangeListener(name, listener);
     }
@@ -119,27 +126,42 @@ namespace USL {
   function pickRemoveValueChangeListener():
     | ((listenerId: number) => void | Promise<void>)
     | undefined {
-    if (typeof g.GM_removeValueChangeListener === "function") return g.GM_removeValueChangeListener;
+    if (typeof g.GM_removeValueChangeListener === "function")
+      return g.GM_removeValueChangeListener;
     if (gmObj && typeof gmObj.removeValueChangeListener === "function") {
       return (id: number) => gmObj.removeValueChangeListener(id);
     }
     return undefined;
   }
 
-  /** 通知用户去登录：弹 GM_notification，点击通知打开登录页 */
-  function notifyLogin(
-    options: LoginFlowOptions
-  ): void {
+  /** 检测 Firefox：Firefox 的 GM_notification 不支持 buttons、不可靠触发
+   *  onclick/打开 url，故 Firefox 下需直接 openTab 而非依赖点击通知。 */
+  function isFirefox(): boolean {
+    try {
+      return typeof navigator !== "undefined" &&
+        /Firefox/i.test(navigator.userAgent);
+    } catch {
+      return false;
+    }
+  }
+
+  /** 通知用户去登录：弹 GM_notification，点击通知打开登录页。
+   *  Firefox 下直接 openTab（不依赖点击），通知仅作提示。 */
+  function notifyLogin(options: LoginFlowOptions): void {
     // 从 loginUrl 提取域名，让用户看到去登录哪个网站
     let domain = options.loginUrl;
     try {
       domain = new URL(options.loginUrl).hostname;
     } catch {}
-    const label = options.loginLabel ?? `去登录 ${domain}`;
+    const label = options.loginLabel ?? `去登录`;
+    const ff = isFirefox();
 
-    // text 默认带域名：Firefox 不支持 buttons 看不到按钮，至少 text 里有域名
-    const text =
-      options.notificationText ?? `会话已过期，请${label}（${domain}）`;
+    // text 默认带域名：Firefox 不支持 buttons 看不到按钮，且直接 openTab，
+    // 文案改为「已打开登录页」；非 Firefox 为「请重新登录」
+    const text = options.notificationText ??
+      (ff
+        ? `会话已过期，已为你打开登录页（${domain}）`
+        : `会话已过期，请重新登录（${domain}）`);
     let title = options.notificationTitle;
     if (!title) {
       try {
@@ -155,7 +177,9 @@ namespace USL {
       if (opened) return;
       opened = true;
       if (!openTab) {
-        logger.error("GM_openInTab unavailable (grant GM_openInTab or GM.openInTab)");
+        logger.error(
+          "GM_openInTab unavailable (grant GM_openInTab or GM.openInTab)",
+        );
         return;
       }
       try {
@@ -165,7 +189,9 @@ namespace USL {
       }
     };
 
-    if (options.autoOpenLogin) open();
+    // Firefox：GM_notification 不可靠触发点击跳转，直接打开登录页
+    // 非 Firefox：autoOpenLogin 或点通知时打开
+    if (ff || options.autoOpenLogin) open();
 
     const notify = pickNotification();
     if (!notify) {
@@ -214,7 +240,7 @@ namespace USL {
       notify({
         title,
         text: `${domain} 在 ${Math.round(
-          (options.loginTimeout ?? 300000) / 1000
+          (options.loginTimeout ?? 300000) / 1000,
         )}s 内未完成登录，请重新触发任务`,
         // 超时通知不再带按钮，仅提示
       });
@@ -231,7 +257,7 @@ namespace USL {
    */
   function waitForLogin(
     options: LoginFlowOptions,
-    fallbackProbe: GM.XhrDetails
+    fallbackProbe: GM.XhrDetails,
   ): Promise<void> {
     const pollInterval = options.pollInterval ?? 10000;
     const timeout = options.loginTimeout ?? 300000;
@@ -251,14 +277,18 @@ namespace USL {
           // 同步形式已拿到 id
           const rm = pickRemoveValueChangeListener();
           if (rm) {
-            try { rm(listenerId); } catch {}
+            try {
+              rm(listenerId);
+            } catch {}
           }
         } else if (listenerIdPromise) {
           // Promise 形式：id 还没 resolve，等拿到再 remove
           listenerIdPromise.then((id) => {
             const rm = pickRemoveValueChangeListener();
             if (rm) {
-              try { rm(id); } catch {}
+              try {
+                rm(id);
+              } catch {}
             }
           });
         }
@@ -291,7 +321,7 @@ namespace USL {
             options.loginSignalKey,
             (_name, _oldV, newV, _remote) => {
               if (newV) finish(true);
-            }
+            },
           );
           if (typeof result === "number") {
             listenerId = result;
@@ -302,10 +332,15 @@ namespace USL {
             // 若等待 id 期间已 finish，拿到后立即 remove（cleanup 里的 .then 会处理）
           }
         } catch (e) {
-          logger.warn("GM_addValueChangeListener failed, rely on polling only", e);
+          logger.warn(
+            "GM_addValueChangeListener failed, rely on polling only",
+            e,
+          );
         }
       } else {
-        logger.warn("GM_addValueChangeListener unavailable, rely on polling only");
+        logger.warn(
+          "GM_addValueChangeListener unavailable, rely on polling only",
+        );
       }
 
       // 路 B：轮询探测
@@ -348,7 +383,7 @@ namespace USL {
    * });
    */
   export async function gmRequestWithLogin(
-    options: LoginFlowOptions
+    options: LoginFlowOptions,
   ): Promise<GM.XhrResponse> {
     // 剥离库控制字段（与 gmRequest 一致），先发原始请求探测是否 401。
     // 显式标注为 GM.XhrDetails：跨文件 namespace 内 interface 继承链对
@@ -368,7 +403,9 @@ namespace USL {
     }
 
     // 401：引导登录
-    logger.warn(`gmRequestWithLogin 401 on ${xhrDetails.method || "GET"} ${xhrDetails.url}, guiding login`);
+    logger.warn(
+      `gmRequestWithLogin 401 on ${xhrDetails.method || "GET"} ${xhrDetails.url}, guiding login`,
+    );
     notifyLogin(options);
 
     // 等待登录成功（valueChange + 轮询），超时抛 LoginTimeoutError

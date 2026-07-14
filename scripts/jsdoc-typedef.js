@@ -36,7 +36,7 @@
  * @property {GMTypes.XHRDetails} [probeRequest] - 专用探测请求；不传则用原始请求重试探测
  * @property {number} [pollInterval] - 轮询间隔 ms，默认 10000
  * @property {number} [loginTimeout] - 登录流程总超时 ms，默认 300000 (5min)
- * @property {string} [notificationText] - 通知文案，默认「会话已过期，请重新登录」
+ * @property {string} [notificationText] - 通知文案，默认「会话已过期，请重新登录（<域名>）」
  * @property {string} [notificationTitle] - 通知标题
  * @property {string} [loginLabel] - 登录按钮文字，默认「去登录 <域名>」
  * @property {boolean} [autoOpenLogin] - 401 时自动打开登录页，默认 false

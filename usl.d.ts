@@ -55,7 +55,7 @@ declare interface USLLoginFlowOptions extends GMTypes.XHRDetails {
   pollInterval?: number;
   /** 登录流程总超时 ms，默认 300000 (5min) */
   loginTimeout?: number;
-  /** 通知文案，默认「会话已过期，请重新登录」 */
+  /** 通知文案，默认「会话已过期，请重新登录（<域名>）」 */
   notificationText?: string;
   /** 通知标题，默认取 GM_info.script.name 或「登录」 */
   notificationTitle?: string;
