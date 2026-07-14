@@ -141,6 +141,9 @@ declare const USL: {
    */
   gmRequestWithLogin(options: USLLoginFlowOptions): Promise<GMTypes.XHRResponse>;
 
+  /** 带登录引导的请求并将 responseText 按 JSON 解析返回（gmRequestWithLogin + JSON.parse）。 */
+  gmRequestJsonWithLogin<T = unknown>(options: USLLoginFlowOptions): Promise<T>;
+
   /** 401 专用错误类构造器 */
   readonly UnauthorizedError: typeof USLUnauthorizedError;
   /** 登录超时错误类构造器 */

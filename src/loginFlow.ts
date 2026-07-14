@@ -414,4 +414,25 @@ namespace USL {
     // 登录成功后重试原请求
     return rawXhr(xhrDetails);
   }
+
+  /**
+   * 带登录引导的请求并将 responseText 按 JSON 解析返回。
+   * 等价于 gmRequestWithLogin + JSON.parse(responseText)。
+   * @template T - 期望的响应数据类型
+   * @param {USLLoginFlowOptions} options - 请求配置（含登录流程字段）
+   * @returns {Promise<T>} 解析后的 JSON 数据
+   * @throws {USL.LoginTimeoutError} loginTimeout 内未登录成功
+   */
+  export async function gmRequestJsonWithLogin<T = unknown>(
+    options: LoginFlowOptions,
+  ): Promise<T> {
+    const resp = await gmRequestWithLogin(options);
+    try {
+      return JSON.parse(resp.responseText) as T;
+    } catch (e) {
+      throw new Error(
+        `gmRequestJsonWithLogin: failed to parse response as JSON: ${(e as Error).message}`,
+      );
+    }
+  }
 }
