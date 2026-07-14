@@ -20,6 +20,7 @@
 /// <reference path="./gmRequest.ts" />
 /// <reference path="./loginFlow.ts" />
 /// <reference path="./message.ts" />
+/// <reference path="./favicon.ts" />
 
 // ============================= 全局挂载 =============================
 //

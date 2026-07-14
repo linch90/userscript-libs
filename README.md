@@ -11,6 +11,7 @@
 - `UnauthorizedError` / `LoginTimeoutError` — 专用错误类，便于 `try/catch` 区分。
 - `logger` — 跨管理器日志：ScriptCat 走 `GM.log`/`GM_log`，其他走 `console.*`；支持 `logger.tag("xxx")` 子前缀。
 - `message` — 轻量页面内提示（类似 ElMessage）：`message.success/error/warning/info(text)`，前台注入顶部居中浮层，3s 自动消失；后台/定时脚本无 DOM 时优先降级 `GM_notification`，不可用再降级走 `logger`。需 `@grant GM_notification` 才能用桌面通知降级。
+- `getFavicon(domain)` / `getFaviconDetail(domain)` — 获取站点 favicon 并返回 data URL（前台脚本专用）。双策略逐级降级：根目录 `favicon.ico` → 读 HTML 前 16KB 解析 `apple-touch-icon`/`icon`/`shortcut icon` → 域名首字母默认 SVG；结果带 30 天 `GM_getValue`/`GM_setValue` 缓存，永不 reject。`getFaviconDetail` 额外返回 `isReal` 标记区分真实站标与降级默认图（`gmRequestWithLogin` 用它做父域回退：从 loginUrl 的 hostname 起逐级剥父域，命中 `isReal` 即停，最多等 8s，超时不带图标）。
 
 ## 构建
 
@@ -106,7 +107,8 @@ USL.logger.info("hi");                           // 弹 info/warn/...
 - `GM_xmlhttpRequest` — gmRequest 必需。
 - `GM_log` — logger 在 ScriptCat 下走 GM 日志面板；不 grant 则退回 `console.*`（前台可用，后台脚本无 console 会丢失日志）。
 - `GM_notification`/`GM_openInTab` — gmRequestWithLogin 弹通知 + 打开登录页。
-- `GM_setValue` — **前台脚本**登录成功后写标记用（约定 key）；后台脚本只是监听，但若前后台同一脚本则也需 grant。
+- `GM_setValue` — **前台脚本**登录成功后写标记用（约定 key）；后台脚本只是监听，但若前后台同一脚本则也需 grant。`getFavicon` 缓存亦用它写入。
+- `GM_getValue` — `getFavicon` 读 favicon 缓存用（前台脚本）。
 - `GM_addValueChangeListener`/`GM_removeValueChangeListener` — **后台脚本**监听登录标记；gmRequestWithLogin 的路 A。未 grant 时自动退化为仅靠轮询探测（路 B）。
 
 > ScriptCat 里 `@grant GM_xxx`（全局函数形式）与 `@grant GM.xxx`（命名空间形式）二选一即可——库对所有用到的 GM API 都做了双探，两种形式都能找到可用实现。推荐统一一种形式（`GM_*` 与 ScriptCat 文档示例一致）。
@@ -143,6 +145,10 @@ try {
     logger.error("需要重新登录");
   }
 }
+
+// 获取站点 favicon 作为通知图标（前台脚本）
+const icon = await USL.getFavicon("example.com");
+GM_notification({ title: "提醒", text: "内容", image: icon });
 ```
 
 ## 设计要点

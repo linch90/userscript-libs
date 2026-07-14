@@ -52,6 +52,9 @@ declare global {
   /** 写入 GM 存储；前台脚本登录成功后用它写登录标记 */
   function GM_setValue(name: string, value: unknown): void;
 
+  /** 读取 GM 存储（同步形式）；favicon 缓存等用它取值，缺失时库内回退默认值。 */
+  function GM_getValue<T = unknown>(name: string, defaultValue?: T): T;
+
   /** 监听指定 key 的值变化（可跨脚本实例/前台后台通信）。返回监听 id（同步）。
    *  后台脚本监听才有 tabid 参数。remote=true 表示来自其它脚本实例。 */
   type GM_ValueChangeListener = (

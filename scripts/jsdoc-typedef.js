@@ -38,9 +38,15 @@
  * @property {number} [loginTimeout] - 登录流程总超时 ms，默认 300000 (5min)
  * @property {string} [notificationText] - 通知文案，默认「会话已过期，请重新登录（<域名>）」
  * @property {string} [notificationTitle] - 通知标题
- * @property {string} [notificationImage] - 通知图标 URL，默认取 loginUrl 站点的 favicon
+ * @property {string} [notificationImage] - 通知图标 URL，默认用 getFavicon(loginUrl 域名) 取 data URL（最多等 8s，超时不带图标）
  * @property {string} [loginLabel] - 登录按钮文字，默认「去登录」
  * @property {boolean} [autoOpenLogin] - 401 时自动打开登录页，默认 false
+ */
+
+/**
+ * @typedef {Object} USLFaviconDetail
+ * @property {string} dataUrl - 图标 data URL（真实站标或默认 SVG）
+ * @property {boolean} isReal - true=真实站标；false=降级生成的默认字母图标
  */
 
 /**
@@ -51,3 +57,4 @@
  * @property {(text: string, options?: {duration?: number}) => void} info
  * @property {(text: string, type: "success"|"error"|"warning"|"info", options?: {duration?: number}) => void} show
  */
+

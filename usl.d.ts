@@ -59,7 +59,7 @@ declare interface USLLoginFlowOptions extends GMTypes.XHRDetails {
   notificationText?: string;
   /** 通知标题，默认取 GM_info.script.name 或「登录」 */
   notificationTitle?: string;
-  /** 通知图标 URL，默认取 loginUrl 站点的 favicon */
+  /** 通知图标 URL，默认用 getFavicon(loginUrl 域名) 取 data URL（最多等 8s，超时不带图标）。显式传入则直接用。 */
   notificationImage?: string;
   /** 登录按钮文字，默认「去登录 <域名>」（从 loginUrl 提取 hostname） */
   loginLabel?: string;
@@ -105,6 +105,14 @@ declare interface USLMessageApi {
   info(text: string, options?: USLMessageOptions): void;
   /** 自定义类型显示 */
   show(text: string, type: USLMessageType, options?: USLMessageOptions): void;
+}
+
+/** getFaviconDetail 返回值：dataUrl 是图标 data URL，isReal 区分真实站标与降级默认图 */
+declare interface USLFaviconDetail {
+  /** 图标 data URL（真实站标或默认 SVG） */
+  dataUrl: string;
+  /** true=真实站标；false=策略一/二都失败后生成的默认字母图标 */
+  isReal: boolean;
 }
 
 /** 401 专用错误类型，便于调用方 catch 区分 */
@@ -153,6 +161,33 @@ declare const USL: {
 
   /** 带登录引导的请求并将 responseText 按 JSON 解析返回（gmRequestWithLogin + JSON.parse）。 */
   gmRequestJsonWithLogin<T = unknown>(options: USLLoginFlowOptions): Promise<T>;
+
+  /**
+   * 获取站点 favicon（data URL）。前台脚本专用（依赖 DOMParser/FileReader/btoa）。
+   * 双策略逐级降级（根 favicon.ico → HTML 解析 → 默认首字母 SVG），
+   * 结果带 30 天 GM 存储缓存，永不 reject（失败返回默认图标）。
+   * @param domain 站点域名（hostname），如 "example.com"
+   */
+  getFavicon(domain: string): Promise<string>;
+
+  /**
+   * 获取站点 favicon，返回带「是否真实站标」标记。
+   * isReal=true 表示策略一/二成功拿到真实站标；false 表示降级生成的默认字母图。
+   * 缓存 key 恒等于入参 domain（不设父域回退，回退由调用方组织），永不 reject。
+   */
+  getFaviconDetail(domain: string): Promise<USLFaviconDetail>;
+
+  /** 生成基于域名首字母的默认 SVG 图标，返回 data URL。 */
+  generateDefaultIcon(domain: string): string;
+
+  /** 将图片 URL 转为 data:image（带超时与大小校验，无效图片会 reject）。 */
+  urlToDataUrl(imageUrl: string, timeout?: number): Promise<string>;
+
+  /** 只读取目标网址 HTML 前 maxBytes 字节（onprogress 提前 abort），用于快速提取图标。 */
+  fetchHtmlPartial(url: string, maxBytes?: number, timeout?: number): Promise<string>;
+
+  /** 从 HTML 片段按优先级解析图标 URL（apple-touch-icon > icon > shortcut icon），未找到返回 null。 */
+  parseIconFromHtml(html: string, baseUrl: string): string | null;
 
   /** 401 专用错误类构造器 */
   readonly UnauthorizedError: typeof USLUnauthorizedError;

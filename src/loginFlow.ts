@@ -1,5 +1,6 @@
 /// <reference path="./logger.ts" />
 /// <reference path="./gmRequest.ts" />
+/// <reference path="./favicon.ts" />
 /**
  * ScriptCat 后台/定时脚本专用：401 时引导用户登录后继续后续流程的请求封装。
  *
@@ -54,7 +55,11 @@ namespace USL {
     notificationText?: string;
     /** 通知标题，默认取 GM_info.script.name 或「登录」 */
     notificationTitle?: string;
-    /** 通知图标 URL，默认取 loginUrl 站点的 favicon（如网站无 favicon 则不显示图标） */
+    /**
+     * 通知图标 URL，默认用 getFavicon 取 data URL：从 loginUrl 的 hostname 起逐级
+     * 回退父域（auth.example.com→example.com），命中真实站标(isReal)即停，最多等 8s，
+     * 超时则不带图标。显式传入则跳过 getFavicon 直接用。
+     */
     notificationImage?: string;
     /** 登录按钮文字，默认「去登录 <域名>」（从 loginUrl 提取 hostname） */
     loginLabel?: string;
@@ -150,8 +155,10 @@ namespace USL {
   }
 
   /** 通知用户去登录：弹 GM_notification，点击通知打开登录页。
-   *  Firefox 下直接 openTab（不依赖点击），通知仅作提示。 */
-  function notifyLogin(options: LoginFlowOptions): void {
+   *  Firefox 下直接 openTab（不依赖点击），通知仅作提示。
+   *  通知图标默认值由 getFavicon 异步获取（双策略 + data URL），故本函数为 async；
+   *  取图标过程中任一步失败都不阻塞登录引导 —— 拿不到就不带图标，照常弹通知。 */
+  async function notifyLogin(options: LoginFlowOptions): Promise<void> {
     // 从 loginUrl 提取域名，让用户看到去登录哪个网站
     let domain = options.loginUrl;
     try {
@@ -175,13 +182,53 @@ namespace USL {
       }
     }
 
-    // 通知图标：优先调用方显式传入，否则尝试用 loginUrl 站点的 favicon
+    // 通知图标：优先调用方显式传入，否则用 getFavicon 取 data URL。
+    // 候选域名链：hostname → 逐级父域（去掉 www. 前缀；按「至少留两段」启发式剥到
+    //   eTLD+1，如 auth.example.com → example.com，再剥就停）。
+    // 子域常无根 favicon / link 声明，父域才有，故逐级回退，命中真实站标
+    //   (isReal=true) 即停，避免错用子域降级的默认字母图。
+    // 每个 candidate 各自走 getFaviconDetail，缓存 key = 该域名本身 —— 故直接
+    //   USL.getFavicon("www.example.com") 与这里的预热命中同一缓存。
+    // 不设等待上限会让 401 登录引导被拉图标阻塞（最坏每候选走完 3s+5s+3s），
+    //   整体用 race 包 8s 硬上限，超时就放弃图标直接弹通知（已有 image 用已有）。
+    // 后台/定时脚本无 DOM，getFaviconDetail 策略一/二失败后返回 isReal=false 默认图，
+    //   逐级回退也判为非真实 → 最终 image 可能 undefined（不带图标），符合预期。
     let image = options.notificationImage;
     if (image === undefined) {
+      const candidate = (hostname: string): string | undefined => {
+        const parts = hostname.replace(/^www\./i, "").split(".").filter(Boolean);
+        return parts.length >= 2 ? parts.join(".") : undefined;
+      };
+      // 生成候选链：当前 hostname → 逐级父域，每段至少留两段
+      const candidates: string[] = [];
+      let cur = candidate(domain);
+      while (cur) {
+        candidates.push(cur);
+        const parts = cur.split(".");
+        if (parts.length <= 2) break;
+        cur = parts.slice(1).join(".");
+      }
+
+      const pickIcon = async (): Promise<string | undefined> => {
+        for (const c of candidates) {
+          try {
+            const detail = await getFaviconDetail(c);
+            if (detail.isReal) return detail.dataUrl;
+          } catch {
+            // getFaviconDetail 永不 reject，此处仅防御性
+          }
+        }
+        return undefined;
+      };
+
       try {
-        const u = new URL(options.loginUrl);
-        image = `https://${u.hostname}/favicon.ico`;
-      } catch {}
+        image = await Promise.race([
+          pickIcon(),
+          new Promise<string | undefined>((r) => setTimeout(() => r(undefined), 8000)),
+        ]);
+      } catch {
+        image = undefined;
+      }
     }
 
     const openTab = pickOpenInTab();
@@ -395,7 +442,7 @@ namespace USL {
     logger.warn(
       `gmRequestWithLogin 401 on ${xhrDetails.method || "GET"} ${xhrDetails.url}, guiding login`,
     );
-    notifyLogin(options);
+    await notifyLogin(options);
 
     // 等待登录成功（valueChange + 轮询），超时抛 LoginTimeoutError
     await waitForLogin(options, xhrDetails);
