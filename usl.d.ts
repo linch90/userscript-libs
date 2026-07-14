@@ -105,7 +105,9 @@ declare class USLUnauthorizedError extends Error {
 }
 
 /** 登录流程超时错误类型 */
-declare class USLLoginTimeoutError extends Error {}
+declare class USLLoginTimeoutError extends Error {
+  readonly timeoutMs: number;
+}
 
 /**
  * userscript-libs 全局对象。由 @require 的 index.js 注入到全局。
