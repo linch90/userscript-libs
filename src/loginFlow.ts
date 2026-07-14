@@ -130,7 +130,16 @@ namespace USL {
   function notifyLogin(
     options: LoginFlowOptions
   ): void {
-    const text = options.notificationText ?? "会话已过期，请重新登录";
+    // 从 loginUrl 提取域名，让用户看到去登录哪个网站
+    let domain = options.loginUrl;
+    try {
+      domain = new URL(options.loginUrl).hostname;
+    } catch {}
+    const label = options.loginLabel ?? `去登录 ${domain}`;
+
+    // text 默认带域名：Firefox 不支持 buttons 看不到按钮，至少 text 里有域名
+    const text =
+      options.notificationText ?? `会话已过期，请${label}（${domain}）`;
     let title = options.notificationTitle;
     if (!title) {
       try {
@@ -140,15 +149,11 @@ namespace USL {
       }
     }
 
-    // 从 loginUrl 提取域名作为按钮文字，让用户看到去登录哪个网站
-    let domain = options.loginUrl;
-    try {
-      domain = new URL(options.loginUrl).hostname;
-    } catch {}
-    const label = options.loginLabel ?? `去登录 ${domain}`;
-
     const openTab = pickOpenInTab();
+    let opened = false; // 防 url 自动打开 + onclick 重复打开
     const open = () => {
+      if (opened) return;
+      opened = true;
       if (!openTab) {
         logger.error("GM_openInTab unavailable (grant GM_openInTab or GM.openInTab)");
         return;
@@ -170,13 +175,17 @@ namespace USL {
       return;
     }
     try {
-      // buttons：点击按钮或通知本体都打开登录页。
-      // Firefox 不支持 buttons，自动忽略该字段，退化为点击通知本体打开。
+      // 双保险打开登录页：
+      // - url: 管理器原生「点通知打开关联 url」，Firefox 也可靠（不依赖 onclick 回调）
+      // - onclick: Chrome/SC 桌面点通知/按钮时回调，手动 open 兜底
+      // - buttons: Chrome 显示「去登录 <域名>」按钮；Firefox 自动忽略
+      // opened 标记防止 url 与 onclick 重复打开两个标签页
       notify({
         text,
         title,
+        url: options.loginUrl,
         onclick: (event?: any) => {
-          // event.event==="click" 点本体；event.isButtonClick 点按钮。任一都打开。
+          // 点通知本体(event.event==="click")或按钮(isButtonClick)都打开
           if (!event || event.event === "click" || event.isButtonClick) {
             open();
           }
