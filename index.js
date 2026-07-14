@@ -38,8 +38,17 @@
  * @property {number} [loginTimeout] - 登录流程总超时 ms，默认 300000 (5min)
  * @property {string} [notificationText] - 通知文案，默认「会话已过期，请重新登录（<域名>）」
  * @property {string} [notificationTitle] - 通知标题
- * @property {string} [loginLabel] - 登录按钮文字，默认「去登录 <域名>」
+ * @property {string} [loginLabel] - 登录按钮文字，默认「去登录」
  * @property {boolean} [autoOpenLogin] - 401 时自动打开登录页，默认 false
+ */
+
+/**
+ * @typedef {Object} USLMessageApi
+ * @property {(text: string, options?: {duration?: number}) => void} success
+ * @property {(text: string, options?: {duration?: number}) => void} error
+ * @property {(text: string, options?: {duration?: number}) => void} warning
+ * @property {(text: string, options?: {duration?: number}) => void} info
+ * @property {(text: string, type: "success"|"error"|"warning"|"info", options?: {duration?: number}) => void} show
  */
 
 "use strict";
@@ -584,6 +593,138 @@ var USL;
     }
     USL.gmRequestWithLogin = gmRequestWithLogin;
 })(USL || (USL = {}));
+/**
+ * 轻量页面内 message 提示（类似 ElMessage）。
+ *
+ * - 前台脚本（有 DOM）：注入顶部居中的浮层容器 + style，按类型显示彩色提示，
+ *   duration（默认 3000ms）后自动淡出消失，多条垂直堆叠。
+ * - 后台/定时脚本（无 DOM）：自动降级走 logger（GM 日志面板/console），
+ *   不报错。
+ *
+ * 用法：
+ *   USL.message.success("保存成功");
+ *   USL.message.error("出错了");
+ *   USL.message.warning("注意");
+ *   USL.message.info("提示");
+ *   USL.message.success("自定义时长", { duration: 5000 });
+ *
+ * 注：本文件以 `namespace USL` 贡献成员，与其它源文件同名 namespace 自动合并。
+ */
+var USL;
+(function (USL) {
+    const TYPE_COLOR = {
+        success: "#52c41a",
+        error: "#ff4d4f",
+        warning: "#faad14",
+        info: "#1890ff",
+    };
+    const CONTAINER_ID = "usl-message-container";
+    const STYLE_ID = "usl-message-style";
+    const STYLE_CSS = `
+#${CONTAINER_ID} {
+  position: fixed; top: 20px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; flex-direction: column;
+  align-items: center;
+  z-index: 999999;
+  pointer-events: none;
+}
+#${CONTAINER_ID} > .usl-msg {
+  margin: 8px 0; padding: 10px 20px;
+  color: #fff; border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  font-size: 14px; line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  animation: uslMsgFadeIn 0.3s;
+  transition: opacity 0.3s, transform 0.3s;
+  max-width: 80vw; word-break: break-word;
+  pointer-events: auto;
+}
+@keyframes uslMsgFadeIn {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+`;
+    /** 是否有可用 DOM（前台脚本） */
+    function hasDom() {
+        try {
+            return typeof document !== "undefined" && !!document.body;
+        }
+        catch {
+            return false;
+        }
+    }
+    /** 确保样式已注入（仅一次） */
+    let styleInjected = false;
+    function ensureStyle() {
+        if (styleInjected || !hasDom())
+            return;
+        if (document.getElementById(STYLE_ID)) {
+            styleInjected = true;
+            return;
+        }
+        const style = document.createElement("style");
+        style.id = STYLE_ID;
+        style.textContent = STYLE_CSS;
+        document.head.appendChild(style);
+        styleInjected = true;
+    }
+    /** 取/创建容器 */
+    function ensureContainer() {
+        if (!hasDom())
+            return null;
+        ensureStyle();
+        let el = document.getElementById(CONTAINER_ID);
+        if (!el) {
+            el = document.createElement("div");
+            el.id = CONTAINER_ID;
+            document.body.appendChild(el);
+        }
+        return el;
+    }
+    function showDom(text, type, duration) {
+        const container = ensureContainer();
+        if (!container)
+            return;
+        const p = document.createElement("div");
+        p.className = "usl-msg";
+        p.style.backgroundColor = TYPE_COLOR[type];
+        p.textContent = text;
+        container.appendChild(p);
+        const remove = () => {
+            if (p.parentNode) {
+                p.style.opacity = "0";
+                p.style.transform = "translateY(-12px)";
+                setTimeout(() => p.remove(), 300);
+            }
+        };
+        if (duration > 0) {
+            setTimeout(remove, duration);
+        }
+    }
+    /** 无 DOM 时降级到 logger */
+    function showFallback(text, type) {
+        const level = type === "error" ? "error" : type === "warning" ? "warn" : "info";
+        USL.logger[level](`[message:${type}] ${text}`);
+    }
+    function show(text, type, options) {
+        var _a;
+        const duration = (_a = options === null || options === void 0 ? void 0 : options.duration) !== null && _a !== void 0 ? _a : 3000;
+        if (hasDom()) {
+            showDom(text, type, duration);
+        }
+        else {
+            showFallback(text, type);
+        }
+    }
+    USL.message = {
+        success: (text, options) => show(text, "success", options),
+        error: (text, options) => show(text, "error", options),
+        warning: (text, options) => show(text, "warning", options),
+        info: (text, options) => show(text, "info", options),
+        show,
+    };
+})(USL || (USL = {}));
 /// <reference path="./types/scriptcat.d.ts" />
 /**
  * userscript-libs 公共入口
@@ -603,6 +744,7 @@ var USL;
 /// <reference path="./logger.ts" />
 /// <reference path="./gmRequest.ts" />
 /// <reference path="./loginFlow.ts" />
+/// <reference path="./message.ts" />
 // ============================= 全局挂载 =============================
 //
 // module:none 下 `namespace USL` 编译为顶层 `var USL`，但 @require 引入时
