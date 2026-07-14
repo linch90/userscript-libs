@@ -1,6 +1,6 @@
 {
   "name": "userscript-libs",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "公共油猴脚本库：封装 GM.xmlHttpRequest / GM.log 等，兼容 ScriptCat 后台/定时脚本",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
