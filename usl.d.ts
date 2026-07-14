@@ -59,6 +59,8 @@ declare interface USLLoginFlowOptions extends GMTypes.XHRDetails {
   notificationText?: string;
   /** 通知标题，默认取 GM_info.script.name 或「登录」 */
   notificationTitle?: string;
+  /** 通知图标 URL，默认取 loginUrl 站点的 favicon */
+  notificationImage?: string;
   /** 登录按钮文字，默认「去登录 <域名>」（从 loginUrl 提取 hostname） */
   loginLabel?: string;
   /** 401 时自动打开登录页（不等用户点通知），默认 false */

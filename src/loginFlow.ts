@@ -54,6 +54,8 @@ namespace USL {
     notificationText?: string;
     /** 通知标题，默认取 GM_info.script.name 或「登录」 */
     notificationTitle?: string;
+    /** 通知图标 URL，默认取 loginUrl 站点的 favicon（如网站无 favicon 则不显示图标） */
+    notificationImage?: string;
     /** 登录按钮文字，默认「去登录 <域名>」（从 loginUrl 提取 hostname） */
     loginLabel?: string;
     /** 是否在 401 时自动打开登录页（不等用户点通知）；默认 false */
@@ -173,6 +175,15 @@ namespace USL {
       }
     }
 
+    // 通知图标：优先调用方显式传入，否则尝试用 loginUrl 站点的 favicon
+    let image = options.notificationImage;
+    if (image === undefined) {
+      try {
+        const u = new URL(options.loginUrl);
+        image = `https://${u.hostname}/favicon.ico`;
+      } catch {}
+    }
+
     const openTab = pickOpenInTab();
     let opened = false; // 防 url 自动打开 + onclick 重复打开
     const open = () => {
@@ -211,6 +222,7 @@ namespace USL {
       notify({
         text,
         title,
+        image,
         url: options.loginUrl,
         onclick: (event?: any) => {
           // 点通知本体(event.event==="click")或按钮(isButtonClick)都打开
