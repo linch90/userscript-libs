@@ -48,6 +48,7 @@
  * @typedef {Object} USLFaviconDetail
  * @property {string} dataUrl - 图标 data URL（真实站标或默认 SVG）
  * @property {boolean} isReal - true=真实站标；false=降级生成的默认字母图标
+ * @property {string} [sourceUrl] - 原图标远程 URL；notifyLogin 在 dataURL（jpeg/过大）不适合通知时退回此 URL
  */
 
 /**
@@ -518,10 +519,12 @@ var USL;
             }
         }
         let iconDataUrl = null;
+        let sourceUrl; // 命中真站标时记录原 URL，供通知场景回退
         // 2. 策略一（快速）：请求根目录 favicon.ico
         try {
             const rootUrl = `https://${domain}/favicon.ico`;
             iconDataUrl = await urlToDataUrl(rootUrl, 3000);
+            sourceUrl = rootUrl;
             USL.logger.debug(`[favicon 根目录成功] ${rootUrl}`);
         }
         catch (e) {
@@ -537,6 +540,7 @@ var USL;
                 if (parsedUrl) {
                     USL.logger.debug(`[favicon HTML 解析到的 URL] ${parsedUrl}`);
                     iconDataUrl = await urlToDataUrl(parsedUrl, 3000);
+                    sourceUrl = parsedUrl;
                     USL.logger.debug(`[favicon HTML 解析成功]`);
                 }
                 else {
@@ -548,14 +552,15 @@ var USL;
             }
         }
         // 4. 真实站标判定：策略一/二任一成功拿到 data URL 即 isReal=true；
-        //    全部失败则生成默认字母图标，isReal=false。
+        //    全部失败则生成默认字母图标，isReal=false（sourceUrl 留空）。
         let isReal = true;
         if (!iconDataUrl) {
             iconDataUrl = generateDefaultIcon(domain);
             isReal = false;
+            sourceUrl = undefined;
             USL.logger.debug(`[favicon 使用默认图标] ${domain}`);
         }
-        const detail = { dataUrl: iconDataUrl, isReal };
+        const detail = { dataUrl: iconDataUrl, isReal, sourceUrl };
         // 5. 仅缓存「真实站标」。失败结果（isReal=false 默认字母图）不落缓存——
         //    否则一次网络抖动 / 临时不可达会把默认字母图锁 30 天，调用方（如
         //    notifyLogin 只要真站标、丢弃字母图）会长期取不到图标。失败则下次
@@ -679,6 +684,29 @@ var USL;
             return false;
         }
     }
+    /** 通知端对 dataURL 图标的 MIME/大小白名单：ico/png/svg 能渲染，
+     *  jpeg 及过大（>64KB）dataURL 常被静默丢弃（实测 ScriptCat 后台）。
+     *  不适合时退回 detail.sourceUrl（原图远程 URL，让通知端自己拉）；sourceUrl
+     *  为空（仅默认字母图）时才用 dataURL。 */
+    const NOTIFY_DATAURL_MAX_BYTES = 64 * 1024;
+    const NOTIFY_DATAURL_MIME_OK = [
+        "image/png",
+        "image/x-icon",
+        "image/vnd.microsoft.icon",
+        "image/svg+xml",
+    ];
+    function pickImageForNotification(detail) {
+        if (!detail || !detail.dataUrl)
+            return undefined;
+        const mime = detail.dataUrl.slice(0, detail.dataUrl.indexOf(";"));
+        const tooBig = detail.dataUrl.length > NOTIFY_DATAURL_MAX_BYTES;
+        const mimeBad = !NOTIFY_DATAURL_MIME_OK.includes(mime);
+        if ((tooBig || mimeBad) && detail.sourceUrl) {
+            // dataURL 不适合通知（如 jpeg 大图）→ 退远程原图
+            return detail.sourceUrl;
+        }
+        return detail.dataUrl;
+    }
     /** 通知用户去登录：弹 GM_notification，点击通知打开登录页。
      *  Firefox 下直接 openTab（不依赖点击），通知仅作提示。
      *  通知图标默认值由 getFavicon 异步获取（双策略 + data URL），故本函数为 async；
@@ -751,9 +779,9 @@ var USL;
                     try {
                         const detail = await USL.getFaviconDetail(c);
                         if (detail.isReal)
-                            return detail.dataUrl;
+                            return detail;
                         if (detail.dataUrl)
-                            fallback = detail.dataUrl;
+                            fallback = detail;
                     }
                     catch {
                         // getFaviconDetail 永不 reject，此处仅防御性
@@ -764,10 +792,16 @@ var USL;
                 return fallback;
             };
             try {
-                image = await Promise.race([
+                const detail = await Promise.race([
                     pickIcon(),
                     new Promise((r) => setTimeout(() => r(undefined), 8000)),
                 ]);
+                // 通知消费端（ScriptCat/浏览器 GM_notification）对 dataURL 图标支持有限：
+                // 实测 ico/png/svg 小图能渲染，jpeg 或过大（>64KB）dataURL 常被静默丢弃
+                // （如 framehdr 真站标是 354KB jpeg dataURL，通知不显示）。故 dataURL 不适合
+                // 通知时，退回原图远程 URL（sourceUrl），让消费端自行拉取缩放——远 URL 反而
+                // 更可靠。sourceUrl 为空（只有默认字母图）时才用 dataURL。
+                image = pickImageForNotification(detail);
             }
             catch {
                 image = undefined;
