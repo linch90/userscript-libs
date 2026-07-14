@@ -22,8 +22,14 @@ namespace USL {
   export type MessageType = "success" | "error" | "warning" | "info";
 
   export interface MessageOptions {
-    /** 显示时长 ms，默认 3000；设 0 则不自动消失（需手动 message.dismiss） */
+    /** 显示时长 ms，默认 3000；设 0 则不自动消失（仅 DOM 浮层生效） */
     duration?: number;
+    /** 标题：GM_notification 降级时显示（DOM 浮层忽略）。默认取类型中文或 GM_info.script.name */
+    title?: string;
+    /** 图标 URL：GM_notification 降级时显示（DOM 浮层忽略） */
+    image?: string;
+    /** 通知点击回调：GM_notification 降级时生效（DOM 浮层忽略） */
+    onclick?: () => void;
   }
 
   const CONTAINER_ID = "usl-message-container";
@@ -160,19 +166,43 @@ namespace USL {
     info: "info",
   };
 
-  function showFallback(text: string, type: MessageType): void {
+  const TYPE_TITLE: Record<MessageType, string> = {
+    success: "成功",
+    error: "错误",
+    warning: "警告",
+    info: "提示",
+  };
+
+  function showFallback(text: string, type: MessageType, options?: MessageOptions): void {
     // 优先桌面通知（后台脚本常见，比 logger 更直观）
     const notify = pickNotify();
     if (notify) {
+      // 默认标题：options.title > GM_info.script.name > 类型中文
+      let title = options?.title;
+      if (!title) {
+        try {
+          title = (GM_info?.script?.name as string) || TYPE_TITLE[type];
+        } catch {
+          title = TYPE_TITLE[type];
+        }
+      }
+      const details: any = {
+        title,
+        text,
+        highlight: type === "error",
+      };
+      if (options?.image) details.image = options.image;
+      if (options?.onclick) details.onclick = options.onclick;
       try {
-        notify({ title: type, text, highlight: type === "error" });
+        notify(details);
         return;
       } catch (e) {
         logger.debug("message fallback notification failed, use logger", e);
       }
     }
-    // 最终降级 logger
-    logger[TYPE_LEVEL[type]](`[message:${type}] ${text}`);
+    // 最终降级 logger（带 title 前缀若有）
+    const prefix = options?.title ? `[${options.title}] ` : "";
+    logger[TYPE_LEVEL[type]](`${prefix}[message:${type}] ${text}`);
   }
 
   export interface MessageApi {
@@ -189,7 +219,7 @@ namespace USL {
     if (hasDom()) {
       showDom(text, type, duration);
     } else {
-      showFallback(text, type);
+      showFallback(text, type, options);
     }
   }
 

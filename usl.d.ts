@@ -81,8 +81,14 @@ declare type USLMessageType = "success" | "error" | "warning" | "info";
 
 /** message 提示配置 */
 declare interface USLMessageOptions {
-  /** 显示时长 ms，默认 3000；设 0 则不自动消失 */
+  /** 显示时长 ms，默认 3000；设 0 则不自动消失（仅 DOM 浮层生效） */
   duration?: number;
+  /** 标题：GM_notification 降级时显示（DOM 浮层忽略）。默认取类型中文或 GM_info.script.name */
+  title?: string;
+  /** 图标 URL：GM_notification 降级时显示（DOM 浮层忽略） */
+  image?: string;
+  /** 通知点击回调：GM_notification 降级时生效（DOM 浮层忽略） */
+  onclick?: () => void;
 }
 
 /**
