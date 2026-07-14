@@ -36,7 +36,7 @@
  * @property {GMTypes.XHRDetails} [probeRequest] - 专用探测请求；不传则用原始请求重试探测
  * @property {number} [pollInterval] - 轮询间隔 ms，默认 10000
  * @property {number} [loginTimeout] - 登录流程总超时 ms，默认 300000 (5min)
- * @property {string} [notificationText] - 通知文案，默认「会话已过期，请重新登录」
+ * @property {string} [notificationText] - 通知文案，默认「会话已过期，请重新登录（<域名>）」
  * @property {string} [notificationTitle] - 通知标题
  * @property {string} [loginLabel] - 登录按钮文字，默认「去登录 <域名>」
  * @property {boolean} [autoOpenLogin] - 401 时自动打开登录页，默认 false
@@ -314,7 +314,19 @@ var USL;
         }
         return undefined;
     }
-    /** 通知用户去登录：弹 GM_notification，点击通知打开登录页 */
+    /** 检测 Firefox：Firefox 的 GM_notification 不支持 buttons、不可靠触发
+     *  onclick/打开 url，故 Firefox 下需直接 openTab 而非依赖点击通知。 */
+    function isFirefox() {
+        try {
+            return typeof navigator !== "undefined" &&
+                /Firefox/i.test(navigator.userAgent);
+        }
+        catch {
+            return false;
+        }
+    }
+    /** 通知用户去登录：弹 GM_notification，点击通知打开登录页。
+     *  Firefox 下直接 openTab（不依赖点击），通知仅作提示。 */
     function notifyLogin(options) {
         var _a, _b, _c;
         // 从 loginUrl 提取域名，让用户看到去登录哪个网站
@@ -323,9 +335,13 @@ var USL;
             domain = new URL(options.loginUrl).hostname;
         }
         catch { }
-        const label = (_a = options.loginLabel) !== null && _a !== void 0 ? _a : `去登录 ${domain}`;
-        // text 默认带域名：Firefox 不支持 buttons 看不到按钮，至少 text 里有域名
-        const text = (_b = options.notificationText) !== null && _b !== void 0 ? _b : `会话已过期，请${label}（${domain}）`;
+        const label = (_a = options.loginLabel) !== null && _a !== void 0 ? _a : `去登录`;
+        const ff = isFirefox();
+        // text 默认带域名：Firefox 不支持 buttons 看不到按钮，且直接 openTab，
+        // 文案改为「已打开登录页」；非 Firefox 为「请重新登录」
+        const text = (_b = options.notificationText) !== null && _b !== void 0 ? _b : (ff
+            ? `会话已过期，已为你打开登录页（${domain}）`
+            : `会话已过期，请重新登录（${domain}）`);
         let title = options.notificationTitle;
         if (!title) {
             try {
@@ -352,7 +368,9 @@ var USL;
                 USL.logger.error("GM_openInTab failed", e);
             }
         };
-        if (options.autoOpenLogin)
+        // Firefox：GM_notification 不可靠触发点击跳转，直接打开登录页
+        // 非 Firefox：autoOpenLogin 或点通知时打开
+        if (ff || options.autoOpenLogin)
             open();
         const notify = pickNotification();
         if (!notify) {
