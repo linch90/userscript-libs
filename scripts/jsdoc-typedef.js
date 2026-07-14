@@ -38,6 +38,15 @@
  * @property {number} [loginTimeout] - 登录流程总超时 ms，默认 300000 (5min)
  * @property {string} [notificationText] - 通知文案，默认「会话已过期，请重新登录（<域名>）」
  * @property {string} [notificationTitle] - 通知标题
- * @property {string} [loginLabel] - 登录按钮文字，默认「去登录 <域名>」
+ * @property {string} [loginLabel] - 登录按钮文字，默认「去登录」
  * @property {boolean} [autoOpenLogin] - 401 时自动打开登录页，默认 false
+ */
+
+/**
+ * @typedef {Object} USLMessageApi
+ * @property {(text: string, options?: {duration?: number}) => void} success
+ * @property {(text: string, options?: {duration?: number}) => void} error
+ * @property {(text: string, options?: {duration?: number}) => void} warning
+ * @property {(text: string, options?: {duration?: number}) => void} info
+ * @property {(text: string, type: "success"|"error"|"warning"|"info", options?: {duration?: number}) => void} show
  */

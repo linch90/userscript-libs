@@ -76,6 +76,28 @@ declare interface USLLoginFlowOptions extends GMTypes.XHRDetails {
   maxRetry?: number;
 }
 
+/** message 提示类型 */
+declare type USLMessageType = "success" | "error" | "warning" | "info";
+
+/** message 提示配置 */
+declare interface USLMessageOptions {
+  /** 显示时长 ms，默认 3000；设 0 则不自动消失 */
+  duration?: number;
+}
+
+/**
+ * 轻量页面内 message 提示（类似 ElMessage）。
+ * 前台脚本注入顶部居中浮层；后台/定时脚本无 DOM 时降级走 logger。
+ */
+declare interface USLMessageApi {
+  success(text: string, options?: USLMessageOptions): void;
+  error(text: string, options?: USLMessageOptions): void;
+  warning(text: string, options?: USLMessageOptions): void;
+  info(text: string, options?: USLMessageOptions): void;
+  /** 自定义类型显示 */
+  show(text: string, type: USLMessageType, options?: USLMessageOptions): void;
+}
+
 /** 401 专用错误类型，便于调用方 catch 区分 */
 declare class USLUnauthorizedError extends Error {
   readonly response: GMTypes.XHRResponse;
@@ -106,6 +128,9 @@ declare const USL: {
 
   /** 是否运行在 ScriptCat 环境下。 */
   isScriptCat(): boolean;
+
+  /** 轻量页面内 message 提示。前台注入浮层；无 DOM 时降级走 logger。 */
+  readonly message: USLMessageApi;
 
   /**
    * 带登录引导的请求：401 时弹通知引导用户登录，登录成功后重试原请求。

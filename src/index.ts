@@ -19,6 +19,7 @@
 /// <reference path="./logger.ts" />
 /// <reference path="./gmRequest.ts" />
 /// <reference path="./loginFlow.ts" />
+/// <reference path="./message.ts" />
 
 // ============================= 全局挂载 =============================
 //
