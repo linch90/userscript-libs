@@ -1,10 +1,12 @@
 /**
  * 轻量页面内 message 提示（类似 ElMessage）。
  *
- * - 前台脚本（有 DOM）：注入顶部居中的浮层容器 + style，按类型显示彩色提示，
+ * - 前台脚本（有可视 DOM）：注入顶部居中的浮层容器 + style，按类型显示彩色提示，
  *   duration（默认 3000ms）后自动淡出消失，多条垂直堆叠。
- * - 后台/定时脚本（无 DOM）：优先降级 GM_notification（桌面通知），
- *   不可用再降级 logger（GM 日志面板/console），不报错。
+ * - 后台/定时脚本（ScriptCat @background/@crontab，background page DOM 不可见）：
+ *   优先降级 GM_notification（桌面通知），不可用再降级 logger
+ *   （GM 日志面板/console），不报错。由 GM_info.script.header 含
+ *   @background/@crontab 判定后台脚本。
  *
  * 用法：
  *   USL.message.success("保存成功");
@@ -59,10 +61,29 @@ namespace USL {
 }
 `;
 
-  /** 是否有可用 DOM（前台脚本） */
+  /** 是否为 ScriptCat 后台/定时脚本。
+   *  通过 GM_info.script.header 中的 @background / @crontab 元数据判定。
+   *  后台/定时脚本运行在隐藏 background page，DOM 不可见。 */
+  function isBackgroundScript(): boolean {
+    try {
+      if (typeof GM_info === "undefined") return false;
+      if ((GM_info as any)?.scriptHandler !== "ScriptCat") return false;
+      const header: string = (GM_info as any)?.script?.header ?? "";
+      // 词边界匹配，避免 @background-xxx 之类误匹配
+      return /@background\b/.test(header) || /@crontab\b/.test(header);
+    } catch {
+      return false;
+    }
+  }
+
+  /** 是否有可用的可视 DOM（前台脚本）。
+   *  ScriptCat 后台/定时脚本运行在隐藏 background page，document.body 存在
+   *  但页面不可见，注入浮层用户看不到，故排除。 */
   function hasDom(): boolean {
     try {
-      return typeof document !== "undefined" && !!document.body;
+      if (typeof document === "undefined" || !document.body) return false;
+      if (isBackgroundScript()) return false;
+      return true;
     } catch {
       return false;
     }
