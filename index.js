@@ -36,8 +36,9 @@
  * @property {GMTypes.XHRDetails} [probeRequest] - 专用探测请求；不传则用原始请求重试探测
  * @property {number} [pollInterval] - 轮询间隔 ms，默认 10000
  * @property {number} [loginTimeout] - 登录流程总超时 ms，默认 300000 (5min)
- * @property {string} [notificationText] - 通知文案，默认「点击去登录」
+ * @property {string} [notificationText] - 通知文案，默认「会话已过期，请重新登录」
  * @property {string} [notificationTitle] - 通知标题
+ * @property {string} [loginLabel] - 登录按钮文字，默认「去登录 <域名>」
  * @property {boolean} [autoOpenLogin] - 401 时自动打开登录页，默认 false
  */
 
@@ -315,8 +316,8 @@ var USL;
     }
     /** 通知用户去登录：弹 GM_notification，点击通知打开登录页 */
     function notifyLogin(options) {
-        var _a, _b;
-        const text = (_a = options.notificationText) !== null && _a !== void 0 ? _a : "点击去登录";
+        var _a, _b, _c;
+        const text = (_a = options.notificationText) !== null && _a !== void 0 ? _a : "会话已过期，请重新登录";
         let title = options.notificationTitle;
         if (!title) {
             try {
@@ -326,6 +327,13 @@ var USL;
                 title = "登录";
             }
         }
+        // 从 loginUrl 提取域名作为按钮文字，让用户看到去登录哪个网站
+        let domain = options.loginUrl;
+        try {
+            domain = new URL(options.loginUrl).hostname;
+        }
+        catch { }
+        const label = (_c = options.loginLabel) !== null && _c !== void 0 ? _c : `去登录 ${domain}`;
         const openTab = pickOpenInTab();
         const open = () => {
             if (!openTab) {
@@ -349,12 +357,50 @@ var USL;
             return;
         }
         try {
-            // 点击通知打开登录页
-            notify({ text, title, onclick: open });
+            // buttons：点击按钮或通知本体都打开登录页。
+            // Firefox 不支持 buttons，自动忽略该字段，退化为点击通知本体打开。
+            notify({
+                text,
+                title,
+                onclick: (event) => {
+                    // event.event==="click" 点本体；event.isButtonClick 点按钮。任一都打开。
+                    if (!event || event.event === "click" || event.isButtonClick) {
+                        open();
+                    }
+                },
+                buttons: [{ title: label }],
+            });
         }
         catch (e) {
             USL.logger.warn("GM_notification failed, opening login directly", e);
             open();
+        }
+    }
+    /** 登录超时时弹 notification 提醒用户 */
+    function notifyTimeout(options) {
+        var _a, _b;
+        const notify = pickNotification();
+        if (!notify)
+            return;
+        let domain = options.loginUrl;
+        try {
+            domain = new URL(options.loginUrl).hostname;
+        }
+        catch { }
+        let title = "登录超时";
+        try {
+            title = `${((_a = GM_info === null || GM_info === void 0 ? void 0 : GM_info.script) === null || _a === void 0 ? void 0 : _a.name) || "登录"} - 超时`;
+        }
+        catch { }
+        try {
+            notify({
+                title,
+                text: `${domain} 在 ${Math.round(((_b = options.loginTimeout) !== null && _b !== void 0 ? _b : 300000) / 1000)}s 内未完成登录，请重新触发任务`,
+                // 超时通知不再带按钮，仅提示
+            });
+        }
+        catch (e) {
+            USL.logger.warn("notify timeout failed", e);
         }
     }
     /**
@@ -413,10 +459,14 @@ var USL;
                     return;
                 done = true;
                 cleanup();
-                if (ok)
+                if (ok) {
                     resolve();
-                else
+                }
+                else {
+                    // 超时提醒：弹 notification 告知登录超时
+                    notifyTimeout(options);
                     reject(err !== null && err !== void 0 ? err : new LoginTimeoutError(timeout));
+                }
             };
             // 路 A：监听前台脚本 setValue 写入真值（双探 GM_* / GM.*）
             const addListener = pickAddValueChangeListener();
