@@ -26,35 +26,32 @@ namespace USL {
     duration?: number;
   }
 
-  const TYPE_COLOR: Record<MessageType, string> = {
-    success: "#52c41a",
-    error: "#ff4d4f",
-    warning: "#faad14",
-    info: "#1890ff",
-  };
-
   const CONTAINER_ID = "usl-message-container";
   const STYLE_ID = "usl-message-style";
   const STYLE_CSS = `
 #${CONTAINER_ID} {
-  position: fixed; top: 20px; left: 50%;
-  transform: translateX(-50%);
-  display: flex; flex-direction: column;
-  align-items: center;
-  z-index: 999999;
-  pointer-events: none;
+  position: fixed !important; top: 20px !important; left: 50% !important;
+  transform: translateX(-50%) !important;
+  display: flex !important; flex-direction: column !important;
+  align-items: center !important;
+  z-index: 999999 !important;
+  pointer-events: none !important;
 }
 #${CONTAINER_ID} > .usl-msg {
-  margin: 8px 0; padding: 10px 20px;
-  color: #fff; border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  font-size: 14px; line-height: 1.5;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  animation: uslMsgFadeIn 0.3s;
-  transition: opacity 0.3s, transform 0.3s;
-  max-width: 80vw; word-break: break-word;
-  pointer-events: auto;
+  margin: 8px 0 !important; padding: 10px 20px !important;
+  color: #fff !important; border-radius: 4px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+  font-size: 14px !important; line-height: 1.5 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  animation: uslMsgFadeIn 0.3s !important;
+  transition: opacity 0.3s, transform 0.3s !important;
+  max-width: 80vw !important; word-break: break-word !important;
+  pointer-events: auto !important;
 }
+#${CONTAINER_ID} > .usl-msg-success { background-color: #52c41a !important; }
+#${CONTAINER_ID} > .usl-msg-error   { background-color: #ff4d4f !important; }
+#${CONTAINER_ID} > .usl-msg-warning { background-color: #faad14 !important; }
+#${CONTAINER_ID} > .usl-msg-info    { background-color: #1890ff !important; }
 @keyframes uslMsgFadeIn {
   from { opacity: 0; transform: translateY(-12px); }
   to { opacity: 1; transform: translateY(0); }
@@ -125,8 +122,7 @@ namespace USL {
     const container = ensureContainer();
     if (!container) return;
     const p = document.createElement("div");
-    p.className = "usl-msg";
-    p.style.backgroundColor = TYPE_COLOR[type];
+    p.className = `usl-msg usl-msg-${type}`;
     p.textContent = text;
     container.appendChild(p);
 
