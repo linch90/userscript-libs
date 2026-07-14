@@ -733,20 +733,47 @@ var USL;
         warning: "warn",
         info: "info",
     };
-    function showFallback(text, type) {
+    const TYPE_TITLE = {
+        success: "成功",
+        error: "错误",
+        warning: "警告",
+        info: "提示",
+    };
+    function showFallback(text, type, options) {
+        var _a;
         // 优先桌面通知（后台脚本常见，比 logger 更直观）
         const notify = pickNotify();
         if (notify) {
+            // 默认标题：options.title > GM_info.script.name > 类型中文
+            let title = options === null || options === void 0 ? void 0 : options.title;
+            if (!title) {
+                try {
+                    title = ((_a = GM_info === null || GM_info === void 0 ? void 0 : GM_info.script) === null || _a === void 0 ? void 0 : _a.name) || TYPE_TITLE[type];
+                }
+                catch {
+                    title = TYPE_TITLE[type];
+                }
+            }
+            const details = {
+                title,
+                text,
+                highlight: type === "error",
+            };
+            if (options === null || options === void 0 ? void 0 : options.image)
+                details.image = options.image;
+            if (options === null || options === void 0 ? void 0 : options.onclick)
+                details.onclick = options.onclick;
             try {
-                notify({ title: type, text, highlight: type === "error" });
+                notify(details);
                 return;
             }
             catch (e) {
                 USL.logger.debug("message fallback notification failed, use logger", e);
             }
         }
-        // 最终降级 logger
-        USL.logger[TYPE_LEVEL[type]](`[message:${type}] ${text}`);
+        // 最终降级 logger（带 title 前缀若有）
+        const prefix = (options === null || options === void 0 ? void 0 : options.title) ? `[${options.title}] ` : "";
+        USL.logger[TYPE_LEVEL[type]](`${prefix}[message:${type}] ${text}`);
     }
     function show(text, type, options) {
         var _a;
@@ -755,7 +782,7 @@ var USL;
             showDom(text, type, duration);
         }
         else {
-            showFallback(text, type);
+            showFallback(text, type, options);
         }
     }
     USL.message = {
