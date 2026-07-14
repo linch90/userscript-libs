@@ -11,7 +11,7 @@
 - `UnauthorizedError` / `LoginTimeoutError` — 专用错误类，便于 `try/catch` 区分。
 - `logger` — 跨管理器日志：ScriptCat 走 `GM.log`/`GM_log`，其他走 `console.*`；支持 `logger.tag("xxx")` 子前缀。
 - `message` — 轻量页面内提示（类似 ElMessage）：`message.success/error/warning/info(text)`，前台注入顶部居中浮层，3s 自动消失；后台/定时脚本无 DOM 时优先降级 `GM_notification`，不可用再降级走 `logger`。需 `@grant GM_notification` 才能用桌面通知降级。
-- `getFavicon(domain)` / `getFaviconDetail(domain)` — 获取站点 favicon 并返回 data URL（前台 / ScriptCat 后台脚本均可）。双策略逐级降级：根目录 `favicon.ico` → 读 HTML 前 16KB 解析 `apple-touch-icon`/`icon`/`shortcut icon` → 域名首字母默认 SVG；命中真站标时带 30 天 `GM_getValue`/`GM_setValue` 缓存（失败结果不缓存，避免一次抖动锁死默认字母图），永不 reject。`getFaviconDetail` 额外返回 `isReal` 标记区分真实站标与降级默认图（`gmRequestWithLogin` 用它做父域回退：从 loginUrl 的 hostname 起逐级剥父域，命中 `isReal` 即停；全无真站标时兜底用默认字母图，最多等 8s）。
+- `getFavicon(domain)` / `getFaviconDetail(domain)` — 获取站点 favicon 并返回 data URL（前台 / ScriptCat 后台脚本均可）。双策略逐级降级：根目录 `favicon.ico` → 读 HTML 前 16KB 解析 `apple-touch-icon`/`icon`/`shortcut icon` → 域名首字母默认 SVG；命中真站标时带 30 天 `GM_getValue`/`GM_setValue` 缓存（失败结果不缓存，避免一次抖动锁死默认字母图），永不 reject。`getFaviconDetail` 额外返回 `isReal` 标记 + `sourceUrl`（原图远程 URL）。`gmRequestWithLogin` 用它做候选域名回退（从 loginUrl 的 hostname 含 www 起逐级剥父域，命中 `isReal` 即停；全无真站标时兜底默认字母图，最多等 8s）。通知图标：ico/png/svg dataURL 能渲染；jpeg 或 >64KB dataURL 通知端静默丢弃，此时自动退回 `sourceUrl` 远程原图让通知端自拉（如 framehdr 真站标是 354KB jpeg，走远程 URL 才显示）。
 
 ## 构建
 

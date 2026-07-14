@@ -48,6 +48,7 @@
  * @typedef {Object} USLFaviconDetail
  * @property {string} dataUrl - 图标 data URL（真实站标或默认 SVG）
  * @property {boolean} isReal - true=真实站标；false=降级生成的默认字母图标
+ * @property {string} [sourceUrl] - 原图标远程 URL；notifyLogin 在 dataURL（jpeg/过大）不适合通知时退回此 URL
  */
 
 /**

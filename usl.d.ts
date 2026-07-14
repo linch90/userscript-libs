@@ -120,6 +120,9 @@ declare interface USLFaviconDetail {
   dataUrl: string;
   /** true=真实站标；false=策略一/二都失败后生成的默认字母图标 */
   isReal: boolean;
+  /** 原图标远程 URL（命中真站标时为 favicon.ico 或 link href；降级字母图无此字段）。
+   *  notifyLogin 在 dataURL 不适合通知（jpeg/过大）时退回此远程 URL。 */
+  sourceUrl?: string;
 }
 
 /** 401 专用错误类型，便于调用方 catch 区分 */

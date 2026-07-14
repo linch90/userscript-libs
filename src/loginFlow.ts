@@ -164,6 +164,29 @@ namespace USL {
     }
   }
 
+  /** 通知端对 dataURL 图标的 MIME/大小白名单：ico/png/svg 能渲染，
+   *  jpeg 及过大（>64KB）dataURL 常被静默丢弃（实测 ScriptCat 后台）。
+   *  不适合时退回 detail.sourceUrl（原图远程 URL，让通知端自己拉）；sourceUrl
+   *  为空（仅默认字母图）时才用 dataURL。 */
+  const NOTIFY_DATAURL_MAX_BYTES = 64 * 1024;
+  const NOTIFY_DATAURL_MIME_OK = [
+    "image/png",
+    "image/x-icon",
+    "image/vnd.microsoft.icon",
+    "image/svg+xml",
+  ];
+  function pickImageForNotification(detail: FaviconDetail | undefined): string | undefined {
+    if (!detail || !detail.dataUrl) return undefined;
+    const mime = detail.dataUrl.slice(0, detail.dataUrl.indexOf(";"));
+    const tooBig = detail.dataUrl.length > NOTIFY_DATAURL_MAX_BYTES;
+    const mimeBad = !NOTIFY_DATAURL_MIME_OK.includes(mime);
+    if ((tooBig || mimeBad) && detail.sourceUrl) {
+      // dataURL 不适合通知（如 jpeg 大图）→ 退远程原图
+      return detail.sourceUrl;
+    }
+    return detail.dataUrl;
+  }
+
   /** 通知用户去登录：弹 GM_notification，点击通知打开登录页。
    *  Firefox 下直接 openTab（不依赖点击），通知仅作提示。
    *  通知图标默认值由 getFavicon 异步获取（双策略 + data URL），故本函数为 async；
@@ -230,13 +253,13 @@ namespace USL {
         cur = parts.slice(1).join(".");
       }
 
-      const pickIcon = async (): Promise<string | undefined> => {
-        let fallback: string | undefined; // 全部非真实时兜底用最后一个（默认字母图也优于空白）
+      const pickIcon = async (): Promise<FaviconDetail | undefined> => {
+        let fallback: FaviconDetail | undefined; // 全部非真实时兜底用最后一个（默认字母图也优于空白）
         for (const c of candidates) {
           try {
             const detail = await getFaviconDetail(c);
-            if (detail.isReal) return detail.dataUrl;
-            if (detail.dataUrl) fallback = detail.dataUrl;
+            if (detail.isReal) return detail;
+            if (detail.dataUrl) fallback = detail;
           } catch {
             // getFaviconDetail 永不 reject，此处仅防御性
           }
@@ -247,10 +270,18 @@ namespace USL {
       };
 
       try {
-        image = await Promise.race([
+        const detail = await Promise.race([
           pickIcon(),
-          new Promise<string | undefined>((r) => setTimeout(() => r(undefined), 8000)),
+          new Promise<FaviconDetail | undefined>((r) =>
+            setTimeout(() => r(undefined), 8000),
+          ),
         ]);
+        // 通知消费端（ScriptCat/浏览器 GM_notification）对 dataURL 图标支持有限：
+        // 实测 ico/png/svg 小图能渲染，jpeg 或过大（>64KB）dataURL 常被静默丢弃
+        // （如 framehdr 真站标是 354KB jpeg dataURL，通知不显示）。故 dataURL 不适合
+        // 通知时，退回原图远程 URL（sourceUrl），让消费端自行拉取缩放——远 URL 反而
+        // 更可靠。sourceUrl 为空（只有默认字母图）时才用 dataURL。
+        image = pickImageForNotification(detail);
       } catch {
         image = undefined;
       }

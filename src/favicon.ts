@@ -235,6 +235,10 @@ namespace USL {
     dataUrl: string;
     /** true=真实站标；false=策略一/二都失败后生成的默认字母图标 */
     isReal: boolean;
+    /** 原图标远程 URL（命中真站标时为 favicon.ico 或 link href；降级字母图为 undefined）。
+     *  供调用方在 dataURL 不适合某些场景（如通知消费端不渲染大尺寸 jpeg dataURL）时，
+     *  回退用远程原图让消费端自行拉取缩放。 */
+    sourceUrl?: string;
   }
 
   /**
@@ -277,11 +281,13 @@ namespace USL {
     }
 
     let iconDataUrl: string | null = null;
+    let sourceUrl: string | undefined; // 命中真站标时记录原 URL，供通知场景回退
 
     // 2. 策略一（快速）：请求根目录 favicon.ico
     try {
       const rootUrl = `https://${domain}/favicon.ico`;
       iconDataUrl = await urlToDataUrl(rootUrl, 3000);
+      sourceUrl = rootUrl;
       logger.debug(`[favicon 根目录成功] ${rootUrl}`);
     } catch (e) {
       logger.debug(`[favicon 根目录失败] ${(e as Error).message}`);
@@ -297,6 +303,7 @@ namespace USL {
         if (parsedUrl) {
           logger.debug(`[favicon HTML 解析到的 URL] ${parsedUrl}`);
           iconDataUrl = await urlToDataUrl(parsedUrl, 3000);
+          sourceUrl = parsedUrl;
           logger.debug(`[favicon HTML 解析成功]`);
         } else {
           logger.debug(`[favicon HTML 中未找到图标声明]`);
@@ -307,15 +314,16 @@ namespace USL {
     }
 
     // 4. 真实站标判定：策略一/二任一成功拿到 data URL 即 isReal=true；
-    //    全部失败则生成默认字母图标，isReal=false。
+    //    全部失败则生成默认字母图标，isReal=false（sourceUrl 留空）。
     let isReal = true;
     if (!iconDataUrl) {
       iconDataUrl = generateDefaultIcon(domain);
       isReal = false;
+      sourceUrl = undefined;
       logger.debug(`[favicon 使用默认图标] ${domain}`);
     }
 
-    const detail: FaviconDetail = { dataUrl: iconDataUrl, isReal };
+    const detail: FaviconDetail = { dataUrl: iconDataUrl, isReal, sourceUrl };
 
     // 5. 仅缓存「真实站标」。失败结果（isReal=false 默认字母图）不落缓存——
     //    否则一次网络抖动 / 临时不可达会把默认字母图锁 30 天，调用方（如
