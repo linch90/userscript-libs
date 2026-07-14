@@ -41,6 +41,7 @@
  * @property {string} [notificationImage] - 通知图标 URL，默认用 getFavicon(loginUrl 域名) 取 data URL（最多等 8s，超时不带图标）
  * @property {string} [loginLabel] - 登录按钮文字，默认「去登录」
  * @property {boolean} [autoOpenLogin] - 401 时自动打开登录页，默认 false
+ * @property {(response: GMTypes.XHRResponse) => boolean} [isUnauthorized] - 判定响应是否需登录，默认仅 status===401；站点未登录返回别的形态（302→/login、200 登录页 HTML 等）时传此回调扩展，如 (r)=>r.status===401||(r.finalUrl||"").includes("/login")
  */
 
 /**
@@ -885,11 +886,15 @@ var USL;
             else {
                 USL.logger.warn("GM_addValueChangeListener unavailable, rely on polling only");
             }
-            // 路 B：轮询探测
+            // 路 B：轮询探测——用与初始请求相同的判定识别是否已登录。
+            // 仅 status===401 不够：站点未登录时若返回 302→/login 或 200 登录页，
+            // 必须沿用 options.isUnauthorized 才能正确识别「未登录」并继续等待。
+            const checkProbe = (r) => r.status === 401 ||
+                (options.isUnauthorized ? !!options.isUnauthorized(r) : false);
             const poll = async () => {
                 try {
                     const resp = await USL.rawXhr(probeDetails);
-                    if (resp.status !== 401) {
+                    if (!checkProbe(resp)) {
                         finish(true);
                     }
                 }
@@ -927,8 +932,11 @@ var USL;
         // 剥离库控制字段（与 gmRequest 一致），先发原始请求探测是否 401。
         // 显式标注为 GM.XhrDetails：跨文件 namespace 内 interface 继承链对
         // GM.XhrDetails 字段在某些 TS 解析路径下会退化，此处用类型断言锁定。
-        const { onUnauthorized, maxRetry, ...rest } = options;
+        const { onUnauthorized, maxRetry, isUnauthorized, ...rest } = options;
         const xhrDetails = rest;
+        // 「需要登录」判定：默认 status===401；调用方可传 isUnauthorized 扩展
+        // （如 finalUrl 含 /login、200 登录页 HTML 等）。初始请求与登录探测复用同一判定。
+        const checkUnauthorized = (r) => r.status === 401 || (isUnauthorized ? !!isUnauthorized(r) : false);
         let resp;
         try {
             resp = await USL.rawXhr(xhrDetails);
@@ -936,11 +944,11 @@ var USL;
         catch (e) {
             throw e;
         }
-        if (resp.status !== 401) {
+        if (!checkUnauthorized(resp)) {
             return resp;
         }
-        // 401：引导登录
-        USL.logger.warn(`gmRequestWithLogin 401 on ${xhrDetails.method || "GET"} ${xhrDetails.url}, guiding login`);
+        // 需登录：引导登录
+        USL.logger.warn(`gmRequestWithLogin unauthorized (status=${resp.status}) on ${xhrDetails.method || "GET"} ${xhrDetails.url}, guiding login`);
         await notifyLogin(options);
         // 等待登录成功（valueChange + 轮询），超时抛 LoginTimeoutError
         await waitForLogin(options, xhrDetails);
@@ -962,7 +970,10 @@ var USL;
             return JSON.parse(resp.responseText);
         }
         catch (e) {
-            throw new Error(`gmRequestJsonWithLogin: failed to parse response as JSON: ${e.message}`);
+            // 解析失败多半是登录态判定没覆盖该站点的「未登录响应」(返回了 HTML 而非
+            // JSON)。带上 status + finalUrl + 正文前 N 字，方便定位是哪种形态。
+            const body = (resp.responseText || "").slice(0, 120).replace(/\s+/g, " ");
+            throw new Error(`gmRequestJsonWithLogin: failed to parse response as JSON (status=${resp.status}, finalUrl=${resp.finalUrl || "?"}, body="${body}"): ${e.message}`);
         }
     }
     USL.gmRequestJsonWithLogin = gmRequestJsonWithLogin;
