@@ -6,8 +6,8 @@
 
 - `gmRequest(options)` — `GM.xmlHttpRequest` 的 Promise 封装（callback 风格统一包成 Promise），对 `401` 提供可配置回调。
 - `gmRequestJson<T>(options)` — 在 `gmRequest` 基础上自动 `JSON.parse(responseText)`。
-- `gmRequestWithLogin(options)` — 401 时引导用户登录后继续流程（ScriptCat 后台/定时脚本专用，前台也可用）。
-- `gmRequestJsonWithLogin<T>(options)` — 在 `gmRequestWithLogin` 基础上自动 `JSON.parse(responseText)`。
+- `gmRequestWithLogin(options)` — 需登录时（默认 401；可配 `isUnauthorized` 覆盖，如站点未登录返回 302→`/login` 或 200 登录页 HTML）引导用户登录后继续流程（ScriptCat 后台/定时脚本专用，前台也可用）。
+- `gmRequestJsonWithLogin<T>(options)` — 在 `gmRequestWithLogin` 基础上自动 `JSON.parse(responseText)`；解析失败时报错带 status/finalUrl/正文片段，便于定位「未登录返回 HTML」之类。
 - `UnauthorizedError` / `LoginTimeoutError` — 专用错误类，便于 `try/catch` 区分。
 - `logger` — 跨管理器日志：ScriptCat 走 `GM.log`/`GM_log`，其他走 `console.*`；支持 `logger.tag("xxx")` 子前缀。
 - `message` — 轻量页面内提示（类似 ElMessage）：`message.success/error/warning/info(text)`，前台注入顶部居中浮层，3s 自动消失；后台/定时脚本无 DOM 时优先降级 `GM_notification`，不可用再降级走 `logger`。需 `@grant GM_notification` 才能用桌面通知降级。
@@ -156,4 +156,18 @@ GM_notification({ title: "提醒", text: "内容", image: icon });
 - **module: none + namespace**：避免 @require 沙箱中无模块加载器导致的 `export` 语法错误；编译为全局 `var USL` + IIFE 挂载到 `unsafeWindow`/`globalThis`/`self`/`window`。
 - **ScriptCat 探测**：通过 `GM_info.scriptHandler === "ScriptCat"` 判断。后台/定时脚本与前台 GM API 一致（callback 风格，无 DOM），不存在单独的 `GM.api` Promise 入口，故无需分流。
 - **401 不写死业务**：`onUnauthorized` 由调用方注入，返回 `Partial<GMTypes.XHRDetails>` 即合并重试，返回 `false`/`void` 则以 `UnauthorizedError` reject；`maxRetry` 默认 `1` 防止无限循环。
-- **gmRequestWithLogin**：401 时 `GM_notification` 引导 → `GM_openInTab` 打开登录页 → 并行两路等登录成功（`GM_addValueChangeListener` 监听前台 `GM_setValue` 标记 + 轮询探测兜底），超时抛 `LoginTimeoutError`。
+- **gmRequestWithLogin**：需登录时 `GM_notification` 引导 → `GM_openInTab` 打开登录页 → 并行两路等登录成功（`GM_addValueChangeListener` 监听前台 `GM_setValue` 标记 + 轮询探测兜底），超时抛 `LoginTimeoutError`。
+- **isUnauthorized 覆盖「需登录」判定**：默认仅 `status===401` 触发登录流程。若站点未登录时不返回 401（而是 302 → `/login` 或 200 登录页 HTML），传 `isUnauthorized(resp)` 回调扩展判定。该回调同时用于初始请求与登录成功轮询探测，故只在「确实未登录」时返回 true，否则会在已登录状态下被误判回登录流程。解析失败时报错带 `status`/`finalUrl`/正文片段，便于定位「未登录返回 HTML」之类：
+
+```js
+await USL.gmRequestJsonWithLogin({
+  method: "GET",
+  url: "https://api.example.com/me",
+  loginUrl: "https://example.com/login",
+  loginSignalKey: "myapp:logged-in",
+  // 该站点未登录时 302 重定向到 /login，finalUrl 会带上 /login
+  isUnauthorized: (resp) =>
+    resp.status === 401 || (resp.finalUrl || "").includes("/login"),
+});
+```
+

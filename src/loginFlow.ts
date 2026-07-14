@@ -66,8 +66,18 @@ namespace USL {
     /** 是否在 401 时自动打开登录页（不等用户点通知）；默认 false */
     autoOpenLogin?: boolean;
     /**
-     * 401 命中时的自定义回调（与 gmRequest 同义）；不传则走默认登录引导流程。
-     * 返回 GM.XhrDetails 部分字段会合并到原请求后重试。
+     * 判定响应是否「需要登录」。默认仅 `status === 401`；站点在未登录时
+     * 返回别的形态（如 302 重定向到 /login、200 登录页 HTML）时，传此回调
+     * 扩展判定，例如：
+     *   isUnauthorized: (r) => r.status === 401
+     *                   || (r.finalUrl || "").includes("/login")
+     * 命中即走登录引导，登录成功后重试。该判定同时用于「登录成功探测」，故
+     * 只在「确实未登录」时返回 true，否则会在已登录状态下被误判回登录流程。
+     */
+    isUnauthorized?: (response: GM.XhrResponse) => boolean;
+    /**
+     * 401(或 isUnauthorized)命中时的自定义回调（与 gmRequest 同义）；不传则
+     * 走默认登录引导流程。返回 GM.XhrDetails 部分字段会合并到原请求后重试。
      */
     onUnauthorized?: (
       response: GM.XhrResponse,
@@ -77,7 +87,7 @@ namespace USL {
       | false
       | void
       | Promise<Partial<GM.XhrDetails> | false | void>;
-    /** 401 回调触发的最大重试次数，默认 1 */
+    /** 401(或 isUnauthorized)回调触发的最大重试次数，默认 1 */
     maxRetry?: number;
   }
 
@@ -379,11 +389,16 @@ namespace USL {
         );
       }
 
-      // 路 B：轮询探测
+      // 路 B：轮询探测——用与初始请求相同的判定识别是否已登录。
+      // 仅 status===401 不够：站点未登录时若返回 302→/login 或 200 登录页，
+      // 必须沿用 options.isUnauthorized 才能正确识别「未登录」并继续等待。
+      const checkProbe = (r: GM.XhrResponse) =>
+        r.status === 401 ||
+        (options.isUnauthorized ? !!options.isUnauthorized(r) : false);
       const poll = async () => {
         try {
           const resp = await rawXhr(probeDetails);
-          if (resp.status !== 401) {
+          if (!checkProbe(resp)) {
             finish(true);
           }
         } catch (e) {
@@ -424,8 +439,13 @@ namespace USL {
     // 剥离库控制字段（与 gmRequest 一致），先发原始请求探测是否 401。
     // 显式标注为 GM.XhrDetails：跨文件 namespace 内 interface 继承链对
     // GM.XhrDetails 字段在某些 TS 解析路径下会退化，此处用类型断言锁定。
-    const { onUnauthorized, maxRetry, ...rest } = options;
+    const { onUnauthorized, maxRetry, isUnauthorized, ...rest } = options;
     const xhrDetails: GM.XhrDetails = rest as GM.XhrDetails;
+
+    // 「需要登录」判定：默认 status===401；调用方可传 isUnauthorized 扩展
+    // （如 finalUrl 含 /login、200 登录页 HTML 等）。初始请求与登录探测复用同一判定。
+    const checkUnauthorized = (r: GM.XhrResponse) =>
+      r.status === 401 || (isUnauthorized ? !!isUnauthorized(r) : false);
 
     let resp: GM.XhrResponse;
     try {
@@ -434,13 +454,13 @@ namespace USL {
       throw e;
     }
 
-    if (resp.status !== 401) {
+    if (!checkUnauthorized(resp)) {
       return resp;
     }
 
-    // 401：引导登录
+    // 需登录：引导登录
     logger.warn(
-      `gmRequestWithLogin 401 on ${xhrDetails.method || "GET"} ${xhrDetails.url}, guiding login`,
+      `gmRequestWithLogin unauthorized (status=${resp.status}) on ${xhrDetails.method || "GET"} ${xhrDetails.url}, guiding login`,
     );
     await notifyLogin(options);
 
@@ -466,8 +486,11 @@ namespace USL {
     try {
       return JSON.parse(resp.responseText) as T;
     } catch (e) {
+      // 解析失败多半是登录态判定没覆盖该站点的「未登录响应」(返回了 HTML 而非
+      // JSON)。带上 status + finalUrl + 正文前 N 字，方便定位是哪种形态。
+      const body = (resp.responseText || "").slice(0, 120).replace(/\s+/g, " ");
       throw new Error(
-        `gmRequestJsonWithLogin: failed to parse response as JSON: ${(e as Error).message}`,
+        `gmRequestJsonWithLogin: failed to parse response as JSON (status=${resp.status}, finalUrl=${resp.finalUrl || "?"}, body="${body}"): ${(e as Error).message}`,
       );
     }
   }

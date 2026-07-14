@@ -65,7 +65,14 @@ declare interface USLLoginFlowOptions extends GMTypes.XHRDetails {
   loginLabel?: string;
   /** 401 时自动打开登录页（不等用户点通知），默认 false */
   autoOpenLogin?: boolean;
-  /** 401 自定义回调（与 gmRequest 同义）；不传则走默认登录引导流程 */
+  /**
+   * 判定响应是否「需要登录」。默认仅 status===401；站点未登录时返回别的形态
+   * （如 302 重定向到 /login、200 登录页 HTML）时，传此回调扩展判定：
+   *   isUnauthorized: (r) => r.status === 401 || (r.finalUrl || "").includes("/login")
+   * 命中即走登录引导，登录成功后重试；该判定同时用于登录成功探测。
+   */
+  isUnauthorized?: (response: GMTypes.XHRResponse) => boolean;
+  /** 401（或 isUnauthorized）自定义回调（与 gmRequest 同义）；不传则走默认登录引导流程 */
   onUnauthorized?: (
     response: GMTypes.XHRResponse,
     retry: (details: GMTypes.XHRDetails) => Promise<GMTypes.XHRResponse>
@@ -74,7 +81,7 @@ declare interface USLLoginFlowOptions extends GMTypes.XHRDetails {
     | false
     | void
     | Promise<Partial<GMTypes.XHRDetails> | false | void>;
-  /** 401 回调触发的最大重试次数，默认 1 */
+  /** 401（或 isUnauthorized）回调触发的最大重试次数，默认 1 */
   maxRetry?: number;
 }
 

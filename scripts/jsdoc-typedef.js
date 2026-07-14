@@ -41,6 +41,7 @@
  * @property {string} [notificationImage] - 通知图标 URL，默认用 getFavicon(loginUrl 域名) 取 data URL（最多等 8s，超时不带图标）
  * @property {string} [loginLabel] - 登录按钮文字，默认「去登录」
  * @property {boolean} [autoOpenLogin] - 401 时自动打开登录页，默认 false
+ * @property {(response: GMTypes.XHRResponse) => boolean} [isUnauthorized] - 判定响应是否需登录，默认仅 status===401；站点未登录返回别的形态（302→/login、200 登录页 HTML 等）时传此回调扩展，如 (r)=>r.status===401||(r.finalUrl||"").includes("/login")
  */
 
 /**
