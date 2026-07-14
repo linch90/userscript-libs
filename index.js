@@ -708,10 +708,9 @@ var USL;
             }
         }
         // 通知图标：优先调用方显式传入，否则用 getFavicon 取 data URL。
-        // 候选域名链：hostname → 逐级父域（去掉 www. 前缀；按「至少留两段」启发式剥到
-        //   eTLD+1，如 auth.example.com → example.com，再剥就停）。
-        // 子域常无根 favicon / link 声明，父域才有，故逐级回退，命中真实站标
-        //   (isReal=true) 即停，避免错用子域降级的默认字母图。
+        // 候选域名链：原 hostname(含 www) → 去 www 裸域 → 逐级父域。命中真实站标
+        //   (isReal=true) 即停。把 www 子域列首位：部分站 favicon 只在 www 子域、
+        //   裸域空（acfun.cn 裸域 favicon.ico 返回 000，www.acfun.cn 才有 200）。
         // 每个 candidate 各自走 getFaviconDetail，缓存 key = 该域名本身 —— 故直接
         //   USL.getFavicon("www.example.com") 与这里的预热命中同一缓存。
         // 不设等待上限会让 401 登录引导被拉图标阻塞（最坏每候选走完 3s+5s+3s），
@@ -725,11 +724,22 @@ var USL;
                 const parts = hostname.replace(/^www\./i, "").split(".").filter(Boolean);
                 return parts.length >= 2 ? parts.join(".") : undefined;
             };
-            // 生成候选链：当前 hostname → 逐级父域，每段至少留两段
+            // 生成候选链：原 hostname(含 www) → 去 www 裸域 → 逐级父域。
+            // 不砍掉 www 直接从裸域起：有些站 favicon 只在 www 子域有、裸域空
+            // （如 acfun.cn 裸域 favicon.ico 返回 000，www.acfun.cn 才有 200），
+            // 故把原 hostname 列首位优先试。
             const candidates = [];
-            let cur = candidate(domain);
+            const seen = new Set();
+            const push = (h) => {
+                if (h && !seen.has(h)) {
+                    seen.add(h);
+                    candidates.push(h);
+                }
+            };
+            push(domain); // 原 hostname（含 www，若有）
+            let cur = candidate(domain); // 去 www 后的裸域
             while (cur) {
-                candidates.push(cur);
+                push(cur);
                 const parts = cur.split(".");
                 if (parts.length <= 2)
                     break;
