@@ -111,6 +111,21 @@ USL.logger.info("hi");                           // 弹 info/warn/...
 - `GM_getValue` — `getFavicon` 读 favicon 缓存用（前台脚本）。
 - `GM_addValueChangeListener`/`GM_removeValueChangeListener` — **后台脚本**监听登录标记；gmRequestWithLogin 的路 A。未 grant 时自动退化为仅靠轮询探测（路 B）。
 
+### @connect（跨域请求白名单，关键易漏）
+
+`GM_xmlhttpRequest` 跨域请求目标域名必须在你用户脚本头 `@connect` 声明，否则管理器直接拦截（报 `Refused to connect ... not a part of the @connect list`）。`@connect` 是**精确域名匹配**，`@connect www.example.com` **不会**覆盖裸域 `example.com`，子/父域要分别声明。
+
+库内会额外跨域请求的几处（除了你业务请求的域，这几类域也要 `@connect`）：
+- **`getFavicon` / `getFaviconDetail`**：会请求 `https://<domain>/favicon.ico` 和站点根 HTML。`domain` 即调用时传入的 hostname。`gmRequestWithLogin` 的通知图标默认会取 `loginUrl` 的 hostname 及其去 `www` 后的裸域（如 `loginUrl=https://www.kungal.com/` → 候选 `kungal.com`），故这些域都要 `@connect`，否则通知拿不到真站标图标。
+- **`gmRequestWithLogin` 登录探测**：探测请求走原始请求 URL，该域通常已 `@connect`（否则签到请求本身也发不出）。但若 `loginUrl` 与请求 API 不同域（如 OAuth 登录页在 `oauth.example.com`，API 在 `www.example.com`），`loginUrl` 域不影响探测（探测不发到 loginUrl），仅 `GM_openInTab` 打开它。
+
+举例（kungal 站，API 在 `www.kungal.com`，登录也在此域，通知图标走 `kungal.com` 裸域 favicon）：
+```
+// @connect www.kungal.com
+// @connect kungal.com
+// @connect oauth.kungal.com   ← 若 loginUrl 跨子域
+```
+
 > ScriptCat 里 `@grant GM_xxx`（全局函数形式）与 `@grant GM.xxx`（命名空间形式）二选一即可——库对所有用到的 GM API 都做了双探，两种形式都能找到可用实现。推荐统一一种形式（`GM_*` 与 ScriptCat 文档示例一致）。
 
 ## 在油猴脚本中使用
