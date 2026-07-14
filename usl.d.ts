@@ -55,10 +55,12 @@ declare interface USLLoginFlowOptions extends GMTypes.XHRDetails {
   pollInterval?: number;
   /** 登录流程总超时 ms，默认 300000 (5min) */
   loginTimeout?: number;
-  /** 通知文案，默认「点击去登录」 */
+  /** 通知文案，默认「会话已过期，请重新登录」 */
   notificationText?: string;
   /** 通知标题，默认取 GM_info.script.name 或「登录」 */
   notificationTitle?: string;
+  /** 登录按钮文字，默认「去登录 <域名>」（从 loginUrl 提取 hostname） */
+  loginLabel?: string;
   /** 401 时自动打开登录页（不等用户点通知），默认 false */
   autoOpenLogin?: boolean;
   /** 401 自定义回调（与 gmRequest 同义）；不传则走默认登录引导流程 */

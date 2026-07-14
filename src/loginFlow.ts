@@ -48,10 +48,12 @@ namespace USL {
     pollInterval?: number;
     /** 登录流程总超时 ms，默认 300000 (5min) */
     loginTimeout?: number;
-    /** 通知文案，默认「点击去登录」 */
+    /** 通知文案，默认「会话已过期，请重新登录」 */
     notificationText?: string;
     /** 通知标题，默认取 GM_info.script.name 或「登录」 */
     notificationTitle?: string;
+    /** 登录按钮文字，默认「去登录 <域名>」（从 loginUrl 提取 hostname） */
+    loginLabel?: string;
     /** 是否在 401 时自动打开登录页（不等用户点通知）；默认 false */
     autoOpenLogin?: boolean;
     /**
@@ -128,7 +130,7 @@ namespace USL {
   function notifyLogin(
     options: LoginFlowOptions
   ): void {
-    const text = options.notificationText ?? "点击去登录";
+    const text = options.notificationText ?? "会话已过期，请重新登录";
     let title = options.notificationTitle;
     if (!title) {
       try {
@@ -137,6 +139,14 @@ namespace USL {
         title = "登录";
       }
     }
+
+    // 从 loginUrl 提取域名作为按钮文字，让用户看到去登录哪个网站
+    let domain = options.loginUrl;
+    try {
+      domain = new URL(options.loginUrl).hostname;
+    } catch {}
+    const label = options.loginLabel ?? `去登录 ${domain}`;
+
     const openTab = pickOpenInTab();
     const open = () => {
       if (!openTab) {
@@ -160,11 +170,47 @@ namespace USL {
       return;
     }
     try {
-      // 点击通知打开登录页
-      notify({ text, title, onclick: open });
+      // buttons：点击按钮或通知本体都打开登录页。
+      // Firefox 不支持 buttons，自动忽略该字段，退化为点击通知本体打开。
+      notify({
+        text,
+        title,
+        onclick: (event?: any) => {
+          // event.event==="click" 点本体；event.isButtonClick 点按钮。任一都打开。
+          if (!event || event.event === "click" || event.isButtonClick) {
+            open();
+          }
+        },
+        buttons: [{ title: label }],
+      });
     } catch (e) {
       logger.warn("GM_notification failed, opening login directly", e);
       open();
+    }
+  }
+
+  /** 登录超时时弹 notification 提醒用户 */
+  function notifyTimeout(options: LoginFlowOptions): void {
+    const notify = pickNotification();
+    if (!notify) return;
+    let domain = options.loginUrl;
+    try {
+      domain = new URL(options.loginUrl).hostname;
+    } catch {}
+    let title = "登录超时";
+    try {
+      title = `${(GM_info?.script?.name as string) || "登录"} - 超时`;
+    } catch {}
+    try {
+      notify({
+        title,
+        text: `${domain} 在 ${Math.round(
+          (options.loginTimeout ?? 300000) / 1000
+        )}s 内未完成登录，请重新触发任务`,
+        // 超时通知不再带按钮，仅提示
+      });
+    } catch (e) {
+      logger.warn("notify timeout failed", e);
     }
   }
 
@@ -219,8 +265,13 @@ namespace USL {
         if (done) return;
         done = true;
         cleanup();
-        if (ok) resolve();
-        else reject(err ?? new LoginTimeoutError(timeout));
+        if (ok) {
+          resolve();
+        } else {
+          // 超时提醒：弹 notification 告知登录超时
+          notifyTimeout(options);
+          reject(err ?? new LoginTimeoutError(timeout));
+        }
       };
 
       // 路 A：监听前台脚本 setValue 写入真值（双探 GM_* / GM.*）
