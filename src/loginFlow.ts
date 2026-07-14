@@ -201,8 +201,9 @@ namespace USL {
     //   USL.getFavicon("www.example.com") 与这里的预热命中同一缓存。
     // 不设等待上限会让 401 登录引导被拉图标阻塞（最坏每候选走完 3s+5s+3s），
     //   整体用 race 包 8s 硬上限，超时就放弃图标直接弹通知（已有 image 用已有）。
-    // 后台/定时脚本无 DOM，getFaviconDetail 策略一/二失败后返回 isReal=false 默认图，
-    //   逐级回退也判为非真实 → 最终 image 可能 undefined（不带图标），符合预期。
+    // 兜底：若所有候选都未取到真实站标（isReal=false），用最后一个候选返回的
+    //   默认字母图，而非丢弃——有图标总比通知空白强。真站标未取到多半是临时
+    //   不可达（isReal=false 不缓存，下次会重试真站标）。
     let image = options.notificationImage;
     if (image === undefined) {
       const candidate = (hostname: string): string | undefined => {
@@ -220,15 +221,19 @@ namespace USL {
       }
 
       const pickIcon = async (): Promise<string | undefined> => {
+        let fallback: string | undefined; // 全部非真实时兜底用最后一个（默认字母图也优于空白）
         for (const c of candidates) {
           try {
             const detail = await getFaviconDetail(c);
             if (detail.isReal) return detail.dataUrl;
+            if (detail.dataUrl) fallback = detail.dataUrl;
           } catch {
             // getFaviconDetail 永不 reject，此处仅防御性
           }
         }
-        return undefined;
+        // 没拿到真实站标：兜底用默认字母图（有图标总比通知空白强）。
+        // 真站标可能因临时不可达未取到（isReal=false 不缓存，下次会重试）。
+        return fallback;
       };
 
       try {

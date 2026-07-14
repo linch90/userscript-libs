@@ -1,19 +1,22 @@
 /// <reference path="./logger.ts" />
 /// <reference path="./gmRequest.ts" />
 /**
- * 站点 favicon 获取工具（前台脚本专用）。
+ * 站点 favicon 获取工具（前台 / ScriptCat 后台脚本均可）。
  *
- * 双策略获取，逐级降级，全程带 30 天 GM 存储缓存：
+ * 双策略获取，逐级降级，全程带 GM 存储缓存（命中真站标才写缓存，30 天有效）：
  *   1. 策略一（快速）：直接请求根目录 `https://<domain>/favicon.ico`，
- *      状态 200 且体积 > 100B 视为有效（过滤 404 占位页/极小无效图）。
+ *      状态 200 且体积 > 100B 视为有效（过滤 404 占位页/极小无效图），
+ *      用 FileReader 将 blob 转 data URL。
  *   2. 策略二（较慢但更准）：读 HTML 前 16KB，按优先级解析 link 声明：
  *        apple-touch-icon(-precomposed) > icon > shortcut icon，
  *      拿到 href 后转 data URL。读取用 onprogress 提前 abort，避免拉整页。
- *   3. 全部失败：生成基于域名首字母的默认 SVG 图标。
+ *   3. 全部失败：生成基于域名首字母的默认 SVG 图标（isReal=false，不落缓存）。
  *
- * 限制：依赖 DOMParser / FileReader / btoa，仅前台脚本可用。ScriptCat
- * 后台/定时脚本无 DOM，策略一/二的 DOM 依赖部分会失败并降级到默认图标
- * （整体 getFavicon 永不 reject，至少返回默认图标）。
+ * 环境兼容：策略一/二走 GM_xmlhttpRequest（前后台一致）。转 data URL 用
+ *   FileReader + DOMParser；后台脚本若这两者不可用，策略一/二失败后降级到
+ *   默认字母图，但**不缓存**，下次仍会重试真站标。
+ * 关键：失败结果（isReal=false）绝不缓存——避免一次网络抖动把默认字母图
+ *   锁 30 天，导致调用方（如 notifyLogin 只要真图标）长期取不到站标。
  *
  * 注：本文件以 `namespace USL` 贡献成员，与其它源文件同名 namespace 自动合并
  * （全局 script，由 outFile 拼接）。`logger` 来自 logger.ts。
@@ -236,10 +239,10 @@ namespace USL {
 
   /**
    * 获取站点 favicon，返回带「是否真实站标」标记的 detail。
-   * 双策略逐级降级（根 favicon.ico → HTML 解析 → 默认图标），结果带 30 天
-   * GM 存储缓存（key 仅 `favicon_<domain>` + `_expire`，不做任何域名改写，
-   * 故调用方在父域上调用与子域上调用各自落各自的 key）。永不 reject
-   * （失败返回 isReal=false 的默认图标）。
+   * 双策略逐级降级（根 favicon.ico → HTML 解析 → 默认图标），命中真站标
+   * 时带 30 天 GM 存储缓存（key 仅 `favicon_<domain>` + `_expire`，不做任何
+   * 域名改写，故调用方在父域上调用与子域上调用各自落各自的 key）。永不
+   * reject（失败返回 isReal=false 的默认图标，但**不落缓存**，下次仍重试真站标）。
    *
    * 设计要点：缓存 key 恒等于入参 domain。父域回退/去 www 等候选逻辑由
    * 调用方组织（见 loginFlow.notifyLogin），逐个候选调本函数，命中真实
@@ -313,10 +316,18 @@ namespace USL {
 
     const detail: FaviconDetail = { dataUrl: iconDataUrl, isReal };
 
-    // 5. 存入缓存（30 天有效期）。旧版若存的是裸 data URL，此处覆盖为 JSON。
+    // 5. 仅缓存「真实站标」。失败结果（isReal=false 默认字母图）不落缓存——
+    //    否则一次网络抖动 / 临时不可达会把默认字母图锁 30 天，调用方（如
+    //    notifyLogin 只要真站标、丢弃字母图）会长期取不到图标。失败则下次
+    //    仍重试真站标。同时清掉可能遗留的同 key 旧缓存（含旧版裸 data URL）。
     try {
-      gmSet(cacheKey, JSON.stringify(detail));
-      gmSet(expireKey, now + 30 * 24 * 60 * 60 * 1000);
+      if (isReal) {
+        gmSet(cacheKey, JSON.stringify(detail));
+        gmSet(expireKey, now + 30 * 24 * 60 * 60 * 1000);
+      } else {
+        gmSet(cacheKey, null as unknown as string);
+        gmSet(expireKey, 0);
+      }
     } catch {
       // GM 存储不可用（如未 grant / 后台脚本受限）忽略，仅牺牲缓存
     }
