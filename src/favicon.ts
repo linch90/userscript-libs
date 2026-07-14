@@ -259,15 +259,16 @@ namespace USL {
     const expireKey = `favicon_${domain}_expire`;
     const now = Date.now();
 
-    // 1. 检查缓存（有效期 30 天）。缓存存 {dataUrl, isReal} 串化的 JSON，
-    //    命中即直接还原，避免重复网络请求。
+    // 1. 检查缓存（有效期 30 天）。仅缓存「真实站标」(isReal=true)；读到
+    //    isReal=false 或旧版裸 data URL 均视为无效，丢弃后重取（新版本绝不
+    //    写 isReal=false 缓存，读到它说明是 v0.2.1 之前的遗留，需清掉）。
     const cached = gmGet<string | null>(cacheKey, null);
     const expire = gmGet<number>(expireKey, 0);
     if (cached && now < expire) {
       try {
         const detail = JSON.parse(cached) as FaviconDetail;
-        if (detail && typeof detail.dataUrl === "string") {
-          logger.debug(`[favicon 缓存命中] ${domain} (isReal=${detail.isReal})`);
+        if (detail && typeof detail.dataUrl === "string" && detail.isReal) {
+          logger.debug(`[favicon 缓存命中] ${domain} (isReal=true)`);
           return detail;
         }
       } catch {
