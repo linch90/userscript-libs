@@ -38,6 +38,7 @@
  * @property {number} [loginTimeout] - 登录流程总超时 ms，默认 300000 (5min)
  * @property {string} [notificationText] - 通知文案，默认「会话已过期，请重新登录（<域名>）」
  * @property {string} [notificationTitle] - 通知标题
+ * @property {string} [notificationImage] - 通知图标 URL，默认取 loginUrl 站点的 favicon
  * @property {string} [loginLabel] - 登录按钮文字，默认「去登录」
  * @property {boolean} [autoOpenLogin] - 401 时自动打开登录页，默认 false
  */
@@ -361,6 +362,15 @@ var USL;
                 title = "登录";
             }
         }
+        // 通知图标：优先调用方显式传入，否则尝试用 loginUrl 站点的 favicon
+        let image = options.notificationImage;
+        if (image === undefined) {
+            try {
+                const u = new URL(options.loginUrl);
+                image = `https://${u.hostname}/favicon.ico`;
+            }
+            catch { }
+        }
         const openTab = pickOpenInTab();
         let opened = false; // 防 url 自动打开 + onclick 重复打开
         const open = () => {
@@ -398,6 +408,7 @@ var USL;
             notify({
                 text,
                 title,
+                image,
                 url: options.loginUrl,
                 onclick: (event) => {
                     // 点通知本体(event.event==="click")或按钮(isButtonClick)都打开
