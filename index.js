@@ -274,11 +274,12 @@ var USL;
  */
 var USL;
 (function (USL) {
-    /** 登录超时专用错误类型 */
+    /** 登录超时专用错误类型，可 catch 后用 USL.message 等自行提示 */
     class LoginTimeoutError extends Error {
         constructor(timeoutMs) {
-            super(`Login flow timed out after ${timeoutMs}ms`);
+            super(`登录超时：在 ${Math.round(timeoutMs / 1000)}s 内未完成登录`);
             this.name = "LoginTimeoutError";
+            this.timeoutMs = timeoutMs;
         }
     }
     USL.LoginTimeoutError = LoginTimeoutError;
@@ -412,33 +413,6 @@ var USL;
             open();
         }
     }
-    /** 登录超时时弹 notification 提醒用户 */
-    function notifyTimeout(options) {
-        var _a, _b;
-        const notify = pickNotification();
-        if (!notify)
-            return;
-        let domain = options.loginUrl;
-        try {
-            domain = new URL(options.loginUrl).hostname;
-        }
-        catch { }
-        let title = "登录超时";
-        try {
-            title = `${((_a = GM_info === null || GM_info === void 0 ? void 0 : GM_info.script) === null || _a === void 0 ? void 0 : _a.name) || "登录"} - 超时`;
-        }
-        catch { }
-        try {
-            notify({
-                title,
-                text: `${domain} 在 ${Math.round(((_b = options.loginTimeout) !== null && _b !== void 0 ? _b : 300000) / 1000)}s 内未完成登录，请重新触发任务`,
-                // 超时通知不再带按钮，仅提示
-            });
-        }
-        catch (e) {
-            USL.logger.warn("notify timeout failed", e);
-        }
-    }
     /**
      * 等待登录成功：valueChange 监听 + 轮询探测并行，先到即解除。
      * 返回的 Promise resolve 后所有监听/定时器已清理。
@@ -499,8 +473,7 @@ var USL;
                     resolve();
                 }
                 else {
-                    // 超时提醒：弹 notification 告知登录超时
-                    notifyTimeout(options);
+                    // 超时不主动弹通知，仅抛语义化错误，由调用方自行提示
                     reject(err !== null && err !== void 0 ? err : new LoginTimeoutError(timeout));
                 }
             };
