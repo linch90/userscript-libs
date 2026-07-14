@@ -3,8 +3,8 @@
  *
  * - 前台脚本（有 DOM）：注入顶部居中的浮层容器 + style，按类型显示彩色提示，
  *   duration（默认 3000ms）后自动淡出消失，多条垂直堆叠。
- * - 后台/定时脚本（无 DOM）：自动降级走 logger（GM 日志面板/console），
- *   不报错。
+ * - 后台/定时脚本（无 DOM）：优先降级 GM_notification（桌面通知），
+ *   不可用再降级 logger（GM 日志面板/console），不报错。
  *
  * 用法：
  *   USL.message.success("保存成功");
@@ -122,10 +122,40 @@ namespace USL {
     }
   }
 
-  /** 无 DOM 时降级到 logger */
+  /** 无 DOM 时的降级：优先 GM_notification（桌面通知），其次 logger */
+  const gMsg: any = typeof globalThis !== "undefined" ? globalThis : ({} as any);
+  const gmMsgObj: any = typeof GM !== "undefined" ? (GM as any) : undefined;
+
+  function pickNotify():
+    | ((details: any, ondone?: (clicked: boolean) => void) => unknown)
+    | undefined {
+    if (typeof gMsg.GM_notification === "function") return gMsg.GM_notification;
+    if (gmMsgObj && typeof gmMsgObj.notification === "function") {
+      return (d: any) => gmMsgObj.notification(d);
+    }
+    return undefined;
+  }
+
+  const TYPE_LEVEL: Record<MessageType, "debug" | "info" | "warn" | "error"> = {
+    success: "info",
+    error: "error",
+    warning: "warn",
+    info: "info",
+  };
+
   function showFallback(text: string, type: MessageType): void {
-    const level = type === "error" ? "error" : type === "warning" ? "warn" : "info";
-    logger[level](`[message:${type}] ${text}`);
+    // 优先桌面通知（后台脚本常见，比 logger 更直观）
+    const notify = pickNotify();
+    if (notify) {
+      try {
+        notify({ title: type, text, highlight: type === "error" });
+        return;
+      } catch (e) {
+        logger.debug("message fallback notification failed, use logger", e);
+      }
+    }
+    // 最终降级 logger
+    logger[TYPE_LEVEL[type]](`[message:${type}] ${text}`);
   }
 
   export interface MessageApi {

@@ -87,7 +87,8 @@ declare interface USLMessageOptions {
 
 /**
  * 轻量页面内 message 提示（类似 ElMessage）。
- * 前台脚本注入顶部居中浮层；后台/定时脚本无 DOM 时降级走 logger。
+ * 前台脚本注入顶部居中浮层；后台/定时脚本无 DOM 时优先降级 GM_notification，
+ * 不可用再降级走 logger。
  */
 declare interface USLMessageApi {
   success(text: string, options?: USLMessageOptions): void;

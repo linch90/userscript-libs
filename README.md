@@ -9,7 +9,7 @@
 - `gmRequestWithLogin(options)` — 401 时引导用户登录后继续流程（ScriptCat 后台/定时脚本专用，前台也可用）。
 - `UnauthorizedError` / `LoginTimeoutError` — 专用错误类，便于 `try/catch` 区分。
 - `logger` — 跨管理器日志：ScriptCat 走 `GM.log`/`GM_log`，其他走 `console.*`；支持 `logger.tag("xxx")` 子前缀。
-- `message` — 轻量页面内提示（类似 ElMessage）：`message.success/error/warning/info(text)`，前台注入顶部居中浮层，3s 自动消失；后台/定时脚本无 DOM 时自动降级走 `logger`。
+- `message` — 轻量页面内提示（类似 ElMessage）：`message.success/error/warning/info(text)`，前台注入顶部居中浮层，3s 自动消失；后台/定时脚本无 DOM 时优先降级 `GM_notification`，不可用再降级走 `logger`。需 `@grant GM_notification` 才能用桌面通知降级。
 
 ## 构建
 
