@@ -180,12 +180,23 @@ declare const USL: {
    */
   getFavicon(domain: string): Promise<string>;
 
+
   /**
    * 获取站点 favicon，返回带「是否真实站标」标记。
    * isReal=true 表示策略一/二成功拿到真实站标；false 表示降级生成的默认字母图。
    * 缓存 key 恒等于入参 domain（不设父域回退，回退由调用方组织），永不 reject。
    */
   getFaviconDetail(domain: string): Promise<USLFaviconDetail>;
+
+  /**
+   * 取适合通知展示的图标 URL（给 USL.message.options.image / GM_notification 用）。
+   * dataURL 适合通知端（ico/png/svg 且 ≤64KB）→ 返回 dataURL；否则（jpeg/过大，如 framehdr 354KB jpg）
+   * 有 sourceUrl 时返回远程原图 URL，让通知端自拉。永不 reject。前台/后台均可。
+   */
+  getNotificationImage(domain: string): Promise<string>;
+
+  /** 判定 dataURL 是否适合通知端渲染（mime 在 ico/png/svg 白名单且 ≤64KB）。 */
+  isDataUrlGoodForNotification(dataUrl: string): boolean;
 
   /** 生成基于域名首字母的默认 SVG 图标，返回 data URL。 */
   generateDefaultIcon(domain: string): string;

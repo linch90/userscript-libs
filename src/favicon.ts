@@ -360,4 +360,56 @@ namespace USL {
   export async function getFavicon(domain: string): Promise<string> {
     return (await getFaviconDetail(domain)).dataUrl;
   }
+
+  // ---- 通知用图标适配 ----
+  // 通知消费端（ScriptCat/浏览器 GM_notification）对 dataURL 图标支持有限：
+  // 实测 ico/png/svg 小图能渲染，jpeg 或过大（>64KB）dataURL 常被静默丢弃
+  // （如 framehdr 真站标是 354KB jpeg dataURL，通知不显示）。故 dataURL 不适合
+  // 通知时退回原图远程 URL（sourceUrl），让消费端自行拉取缩放——远 URL 更可靠。
+
+  /** 通知端可渲染的 dataURL MIME 白名单 */
+  export const NOTIFY_DATAURL_MIME_OK = [
+    "image/png",
+    "image/x-icon",
+    "image/vnd.microsoft.icon",
+    "image/svg+xml",
+  ];
+  /** 通知端 dataURL 大小上限（超出则退回远程原图） */
+  export const NOTIFY_DATAURL_MAX_BYTES = 64 * 1024;
+
+  /** 判定 dataURL 是否适合通知端渲染（mime 在白名单且不超大小上限）。
+   *  导出供调用方自行决策。 */
+  export function isDataUrlGoodForNotification(dataUrl: string): boolean {
+    if (!dataUrl) return false;
+    const mime = dataUrl.slice(0, dataUrl.indexOf(";"));
+    return (
+      NOTIFY_DATAURL_MIME_OK.includes(mime) &&
+      dataUrl.length <= NOTIFY_DATAURL_MAX_BYTES
+    );
+  }
+
+  /**
+   * 取适合通知展示的图标 URL（data URL 或远程原图 URL）。
+   * 等价于 `getFaviconDetail` 后自动适配：
+   *   - dataURL 适合通知（ico/png/svg 且 ≤64KB）→ 返回 dataURL；
+   *   - dataURL 不适合（jpeg 或 >64KB，如 framehdr 354KB jpg）且有 sourceUrl → 返回远程原图 URL；
+   *   - 仅默认字母图（svg，小图适合）→ 返回该 dataURL。
+   * 永不 reject。前台/后台脚本均可。给 `USL.message.options.image` 或 `GM_notification({image})` 用。
+   *
+   * @param domain 站点域名（hostname），如 "framehdr.com"
+   * @returns 适合通知的图标 URL（data URL 或远程 URL），失败返回默认字母图 dataURL
+   * @example
+   * const icon = await USL.getNotificationImage("framehdr.com");
+   * USL.message.success("签到成功", { image: icon });
+   */
+  export async function getNotificationImage(domain: string): Promise<string> {
+    const detail = await getFaviconDetail(domain);
+    const mime = detail.dataUrl.slice(0, detail.dataUrl.indexOf(";"));
+    const tooBig = detail.dataUrl.length > NOTIFY_DATAURL_MAX_BYTES;
+    const mimeBad = !NOTIFY_DATAURL_MIME_OK.includes(mime);
+    if ((tooBig || mimeBad) && detail.sourceUrl) {
+      return detail.sourceUrl;
+    }
+    return detail.dataUrl;
+  }
 }

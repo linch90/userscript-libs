@@ -164,24 +164,12 @@ namespace USL {
     }
   }
 
-  /** 通知端对 dataURL 图标的 MIME/大小白名单：ico/png/svg 能渲染，
-   *  jpeg 及过大（>64KB）dataURL 常被静默丢弃（实测 ScriptCat 后台）。
-   *  不适合时退回 detail.sourceUrl（原图远程 URL，让通知端自己拉）；sourceUrl
-   *  为空（仅默认字母图）时才用 dataURL。 */
-  const NOTIFY_DATAURL_MAX_BYTES = 64 * 1024;
-  const NOTIFY_DATAURL_MIME_OK = [
-    "image/png",
-    "image/x-icon",
-    "image/vnd.microsoft.icon",
-    "image/svg+xml",
-  ];
+  /** 通知端 dataURL 适配（常量/逻辑见 favicon.ts 的 NOTIFY_* / isDataUrlGoodForNotification）。
+   *  notifyLogin 在候选域名链选出一个真站标 detail 后用它判定：dataURL 不适合通知
+   *  （jpeg/过大）时退回 detail.sourceUrl（远程原图）。 */
   function pickImageForNotification(detail: FaviconDetail | undefined): string | undefined {
     if (!detail || !detail.dataUrl) return undefined;
-    const mime = detail.dataUrl.slice(0, detail.dataUrl.indexOf(";"));
-    const tooBig = detail.dataUrl.length > NOTIFY_DATAURL_MAX_BYTES;
-    const mimeBad = !NOTIFY_DATAURL_MIME_OK.includes(mime);
-    if ((tooBig || mimeBad) && detail.sourceUrl) {
-      // dataURL 不适合通知（如 jpeg 大图）→ 退远程原图
+    if (!isDataUrlGoodForNotification(detail.dataUrl) && detail.sourceUrl) {
       return detail.sourceUrl;
     }
     return detail.dataUrl;
